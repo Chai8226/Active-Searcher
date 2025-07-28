@@ -1,0 +1,50 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/devel/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/devel/include/**",
+        "/opt/ros/melodic/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/drone_detect/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/plan_manage/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/exploration_manager/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/exploration_preprocessing/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/exploration_utils/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/fast_planner/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/gazebo_ros_pkgs/gazebo_plugins/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/gazebo_ros_pkgs/gazebo_ros/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/gazebo_ros_pkgs/gazebo_ros_control/include/**",
+        "/home/chai/PX4_Firmware/Tools/sitl_gazebo/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/camera_sensing/mesh_render/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/utils/multi_map_server/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/path_searching/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/pathfinding/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/plan_env/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/camera_sensing/pointcloud_render/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/utils/pose_utils/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/utils/quadrotor_msgs/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/utils/selected_points_publisher/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/so3_control/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/so3_disturbance_generator/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/so3_quadrotor_simulator/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/swarm_bridge/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/traj_opt/include/**",
+        "/home/chai/Code/SCAR/planning/NeuralIMC-PX4/src/planner/traj_utils/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/trajectory/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/uav_simulator/utils/uav_utils/include/**",
+        "/home/chai/Code/SCAR/search/Multi-UAV-Search-Gazebo/src/search_planner/voxel_mapping/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
