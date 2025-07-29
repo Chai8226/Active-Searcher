@@ -401,8 +401,8 @@ void HGrid::getCoverageCostMatrix(const vector<Eigen::Vector3d>& positions,
   // Costs from drones to grid
   for (int i = 0; i < drone_num; ++i) {
     for (int j = 0; j < grid_num; ++j) {
-      double cost =
-          getCoverageCostDroneToGrid(positions[i], grid_ids[j], velocities[i], first_ids[i], growth_vector);
+      double cost = getCoverageCostDroneToGrid(
+          positions[i], grid_ids[j], velocities[i], first_ids[i], growth_vector);
       mat(1 + i, 1 + drone_num + j) = cost;
       mat(1 + drone_num + j, 1 + i) = 0;
     }
@@ -458,62 +458,61 @@ double HGrid::getCostDroneToGrid(
 /// @param growth_vector 代表可疑区域的生长方向
 /// @return
 double HGrid::getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& grid_id,
-  const Vector3d& v1, const vector<int>& first,
-  const Eigen::Vector3d& growth_vector = Eigen::Vector3d(0, 0, 0)) {
+    const Vector3d& v1, const vector<int>& first,
+    const Eigen::Vector3d& growth_vector = Eigen::Vector3d(0, 0, 0)) {
 
-auto& grid = getGrid(grid_id);
-Eigen::Vector3i cur_grid_index;
-grid1_->posToIndex(pos, cur_grid_index);
-int cur_id = grid1_->toAddress(cur_grid_index);  // 当前位置的网格id
-if (!isClose(grid_id, cur_id)) {                 // 如果不相邻，调用一般的代价计算
-  return getCostDroneToGrid(pos, grid_id, first);
-}
-
-// consider v change
-double dist1, cost;
-if (v1.norm() > 1e-3) {
-  const auto dir = (grid.center_ - pos).normalized();  // 当前位置到网格中心的向量
-  const auto vdir = v1.normalized();
-  double diff = acos(vdir.dot(dir));  // 速度方向的变化量
-  cost += 1.5 * diff;
-}
-
-dist1 = (pos - grid.center_).norm();
-if (dist1 < 5.0) {
-  path_finder_->reset();
-  if (path_finder_->search(pos, grid.center_) == Astar::REACH_END) {
-    auto path = path_finder_->getPath();
-    cost = path_finder_->pathLength(path);
-  } else {
-    cost = dist1 + consistent_cost2_;
+  auto& grid = getGrid(grid_id);
+  Eigen::Vector3i cur_grid_index;
+  grid1_->posToIndex(pos, cur_grid_index);
+  int cur_id = grid1_->toAddress(cur_grid_index);  // 当前位置的网格id
+  if (!isClose(grid_id, cur_id)) {                 // 如果不相邻，调用一般的代价计算
+    return getCostDroneToGrid(pos, grid_id, first);
   }
-} else {
-  cost = 1.5 * dist1 + consistent_cost2_;
-}
-// Consistency cost with previous first grid
-if (!first.empty()) {
-  for (auto first_id : first) {
-    if (grid_id == first_id) {
-      cost += consistent_cost_;
-      break;
+
+  // consider v change
+  double dist1, cost;
+  if (v1.norm() > 1e-3) {
+    const auto dir = (grid.center_ - pos).normalized();  // 当前位置到网格中心的向量
+    const auto vdir = v1.normalized();
+    double diff = acos(vdir.dot(dir));  // 速度方向的变化量
+    cost += 0.8 * diff;
+  }
+
+  dist1 = (pos - grid.center_).norm();
+  if (dist1 < 5.0) {
+    path_finder_->reset();
+    if (path_finder_->search(pos, grid.center_) == Astar::REACH_END) {
+      auto path = path_finder_->getPath();
+      cost = path_finder_->pathLength(path);
+    } else {
+      cost = dist1 + consistent_cost2_;
+    }
+  } else {
+    cost = 1.5 * dist1 + consistent_cost2_;
+  }
+  // Consistency cost with previous first grid
+  if (!first.empty()) {
+    for (auto first_id : first) {
+      if (grid_id == first_id) {
+        cost += consistent_cost_;
+        break;
+      }
     }
   }
-}
 
-// consider growth vector
-auto cur_grid = getGrid(cur_id);
-Eigen::Vector3d grid_dir =
-    Eigen::Vector3d(grid.center_ - cur_grid.center_);  // 两个网格中心的向量
+  // consider growth vector
+  auto cur_grid = getGrid(cur_id);
+  Eigen::Vector3d grid_dir =
+      Eigen::Vector3d(grid.center_ - cur_grid.center_);  // 两个网格中心的方向向量
 
-double growth_encouragement =
-    0.2 * growth_vector.dot(grid_dir.normalized());  // 计算生长方向的代价
-std::cout << "growth vector: " << growth_vector.norm() << std::endl;
-std::cout << "Growth encouragement: " << growth_encouragement << std::endl;
-if (growth_encouragement > 0) {
-  cost -= growth_encouragement;  // 如果生长方向的代价为正，增加到总代价中
-}
-// if (drone_num > 1) cost *= w_first_;
-return cost;
+  double growth_encouragement = growth_vector.dot(grid_dir.normalized());  // 计算生长方向的代价
+  std::cout << "growth vector: " << growth_vector.norm() << std::endl;
+  std::cout << "Growth encouragement: " << growth_encouragement << std::endl;
+  if (growth_encouragement > 0) {
+    cost -= 0.5 * growth_encouragement;  // 如果生长方向的代价为正，增加到总代价中
+  }
+  // if (drone_num > 1) cost *= w_first_;
+  return cost;
 }
 
 double HGrid::getCostGridToGrid(const int& id1, const int& id2, const vector<vector<int>>& firsts,
