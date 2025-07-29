@@ -1,12 +1,13 @@
 #include <exploration_manager/island_finder.h>
 
-void IslandFinder::init(shared_ptr<fast_planner::SDFMap> map, int drone_id, int drone_num) {
+void IslandFinder::init(shared_ptr<fast_planner::SDFMap> map, shared_ptr<fast_planner::FrontierFinder> frontier_finder, int drone_id, int drone_num) {
   double lowThreshold = 12;
   double highThreshold = 35;
   int apertureSize = 7;
   int closing_kernel = 8;
   int min_area_thresh = 3;
   this->sdf_map_ = map;
+  this->frontier_finder_ = frontier_finder;
   this->occ_process.reset(new OccmapProcessing());
   this->occ_process->init(
       map, lowThreshold, highThreshold, apertureSize, closing_kernel, min_area_thresh);
@@ -48,22 +49,22 @@ int IslandFinder::searchMSERUpdatedIslands() {
   // std::cout << "matrix done" << std::endl;
   in_matrix.fill(-1);
   in_matrix1.fill(-1);  // 位置区域用-1初始化，便于裁剪
-  int flag = 0;
-  double z_min = DBL_MAX, z_max = 0;
+  bool flag = false;
+  double z_min = DBL_MAX, z_max = -1;
   for (int x = bmin(0); x <= bmax(0); ++x) {
     for (int y = bmin(1); y <= bmax(1); ++y) {
       for (int z = bmin(2); z <= bmax(2); ++z) {
-        Eigen::Vector3i id = Eigen::Vector3i(x, y, z);
+        Eigen::Vector3i idx = Eigen::Vector3i(x, y, z);
         // std::cout << "getOccupancy" << std::endl;
-        if (this->sdf_map_->getOccupancy(id) == fast_planner::SDFMap::OCCUPIED) {
+        if (this->sdf_map_->getOccupancy(idx) == fast_planner::SDFMap::OCCUPIED) {
           // std::cout << "in_matrix" << std::endl;
           Eigen::Vector3d pos;
-          this->sdf_map_->indexToPos(id, pos);
+          this->sdf_map_->indexToPos(idx, pos);
           z_min = min(z_min, pos(2));
           z_max = max(z_max, pos(2));
           if (F2I(pos(2), 0.75) > in_matrix(x - bmin(0), y - bmin(1))) {
             in_matrix(x - bmin(0), y - bmin(1)) = F2I(pos(2), 0.75);  // z向下取整
-            flag = 1;
+            flag = true;
             in_matrix1(x - bmin(0), y - bmin(1)) = F2I(pos(2), 0.75);
           }
         }
@@ -456,63 +457,162 @@ int IslandFinder::mergeNewIslands(
 /// @brief 判断了解程度
 /// @param island_box
 /// @return
-bool IslandFinder::isknown(const vector<Eigen::Vector3d>& island_box) {
-  if (island_box.empty()) {
+bool IslandFinder::isknown(Island& island, const vector<vector<Vector3d>>& clusters) {
+  if (island.box.empty()) {
     ROS_ERROR("EMPTY BOX");
     return true;
   }
-  if (island_box.size() != 2) {
+  if (island.box.size() != 2) {
     ROS_ERROR("WRONG BOX");
     return true;
   }
-  Eigen::Vector3i max_id, min_id;
-  this->sdf_map_->posToIndex(island_box[0], min_id);
-  this->sdf_map_->posToIndex(island_box[1], max_id);
-
-  int boundary_num = 0;
-  int occ_num = 0;
-  int sum = (max_id(0) - min_id(0)) * (max_id(1) - min_id(1)) * (max_id(2) - min_id(2));
-
-  for (int x = min_id(0); x <= max_id(0); x++) {
-    for (int y = min_id(1); y <= max_id(1); y++) {
-      for (int z = min_id(2); z <= max_id(2); z++) {
-
-        Eigen::Vector3i pos = Eigen::Vector3i(x, y, z);
-
-        if (this->sdf_map_->getOccupancy(pos) == fast_planner::SDFMap::UNKNOWN) {
-          const vector<Eigen::Vector3i> delta = { Eigen::Vector3i(1, 0, 0),
-            Eigen::Vector3i(-1, 0, 0), Eigen::Vector3i(0, 1, 0), Eigen::Vector3i(0, -1, 0),
-            Eigen::Vector3i(0, 0, 1), Eigen::Vector3i(0, 0, -1) };
-          for (int i = 0; i < 6; i++) {
-            Eigen::Vector3i neighbor = pos + delta[i];
-            if (this->sdf_map_->isInMap(neighbor)) {
-              if (this->sdf_map_->getOccupancy(neighbor) != fast_planner::SDFMap::UNKNOWN) {
-                boundary_num++;
-                break;
-              }
-            }
-          }
-        } else if (this->sdf_map_->getOccupancy(pos) == fast_planner::SDFMap::OCCUPIED) {
-          occ_num++;
-        }
-      }
+  //const auto& frontier_finder = this->frontier_finder_;
+  vector<pair<Eigen::Vector3d,Eigen::Vector3d>> frontier_boxes;
+  frontier_finder_->getFrontierBoxes(frontier_boxes);
+  int known_num = 0; 
+  bool have_frontier_inside = false;
+  int frontier_thre = 0;
+  for(size_t i = 0; i < frontier_boxes.size(); i++) {
+    vector<Eigen::Vector3d> box = {frontier_boxes[i].first, frontier_boxes[i].second};
+    if(checkAABBIntersection(island.box, box)) {  //如果边界和可疑区域有交集
+      have_frontier_inside = true;
     }
   }
+  //island.frontier_pt_num = known_num;
+  if(!have_frontier_inside) return true;
 
-  // 在这里添加验证
-  if (boundary_num == 0) {
-    ROS_ERROR("IslandFinder::isknown: Division by zero avoided! boundary_num is 0.");
-    return false;  // 或者其他适合你业务逻辑的返回值
-  }
-  // double rate = boundary_num / ((double)sum);  // unknown_voxels / all_voxels
-  double rate = (double)occ_num / boundary_num;
-  std::cout << "boundary_num" << boundary_num << std::endl;
-  std::cout << "occ_num" << occ_num << std::endl;
-  if (rate >= 0.9) {
-    return true;
-  }
+  Eigen::Vector3i max_id, min_id;
+  this->sdf_map_->posToIndex(island.box[0], min_id);
+  this->sdf_map_->posToIndex(island.box[1], max_id);
+
+  // int boundary_num = 0;
+  // int occ_num = 0;
+  // int sum = (max_id(0) - min_id(0)) * (max_id(1) - min_id(1)) * (max_id(2) - min_id(2));
+
+  // for (int x = min_id(0); x <= max_id(0); x++) {
+  //   for (int y = min_id(1); y <= max_id(1); y++) {
+  //     for (int z = min_id(2); z <= max_id(2); z++) {
+
+  //       Eigen::Vector3i pos = Eigen::Vector3i(x, y, z);
+
+  //       if (this->sdf_map_->getOccupancy(pos) == fast_planner::SDFMap::UNKNOWN) {
+  //         const vector<Eigen::Vector3i> delta = { Eigen::Vector3i(1, 0, 0),
+  //           Eigen::Vector3i(-1, 0, 0), Eigen::Vector3i(0, 1, 0), Eigen::Vector3i(0, -1, 0),
+  //           Eigen::Vector3i(0, 0, 1), Eigen::Vector3i(0, 0, -1) };
+  //         for (int i = 0; i < 6; i++) {
+  //           Eigen::Vector3i neighbor = pos + delta[i];
+  //           if (this->sdf_map_->isInMap(neighbor)) {
+  //             if (this->sdf_map_->getOccupancy(neighbor) != fast_planner::SDFMap::UNKNOWN) {
+  //               boundary_num++;
+  //               break;
+  //             }
+  //           }
+  //         }
+  //       } else if (this->sdf_map_->getOccupancy(pos) == fast_planner::SDFMap::OCCUPIED) {
+  //         occ_num++;
+  //       }
+  //     }
+  //   }
+  // }
+
+  // // 在这里添加验证
+  // if (boundary_num == 0) {
+  //   ROS_ERROR("IslandFinder::isknown: Division by zero avoided! boundary_num is 0.");
+  //   return false;  // 或者其他适合你业务逻辑的返回值
+  // }
+  // // double rate = boundary_num / ((double)sum);  // unknown_voxels / all_voxels
+  // double rate = (double)occ_num / boundary_num;
+  // std::cout << "boundary_num" << boundary_num << std::endl;
+  // std::cout << "occ_num" << occ_num << std::endl;
+  // if (rate >= 0.9) {
+  //   return true;
+  // }
+  // return false;
   return false;
 }
+
+// /// @brief 判断了解程度
+// /// @param island_box
+// /// @return
+// bool IslandFinder::isknown(Island& island, const vector<vector<Vector3d>>& clusters) {
+//   if (island.box.empty()) {
+//     ROS_ERROR("EMPTY BOX");
+//     return true;
+//   }
+//   if (island.box.size() != 2) {
+//     ROS_ERROR("WRONG BOX");
+//     return true;
+//   }
+//   //const auto& frontier_finder = this->frontier_finder_;
+//   vector<pair<Eigen::Vector3d,Eigen::Vector3d>> frontier_boxes;
+//   frontier_finder_->getFrontierBoxes(frontier_boxes);
+//   int known_num = 0; 
+//   int frontier_thre = 0;
+//   for(size_t i = 0; i < frontier_boxes.size(); i++) {
+//     vector<Eigen::Vector3d> box = {frontier_boxes[i].first, frontier_boxes[i].second};
+//     if(checkAABBIntersection(island.box, box)) {  //如果边界和可疑区域有交集
+//       const auto& points = clusters[i]; //找到这个边界的簇
+//       for(const auto& point : points) {
+//         if(point(0) >= island.box[0](0) && point(0) <= island.box[1](0) &&
+//            point(1) >= island.box[0](1) && point(1) <= island.box[1](1) &&
+//            point(2) >= island.box[0](2) && point(2) <= island.box[1](2)) {
+//           known_num++;  //记录可以区域之中的边界点总数
+//         }
+//       }
+//     }
+//   }
+//   island.frontier_pt_num = known_num;
+//   if(known_num <= frontier_thre) return true;
+
+//   Eigen::Vector3i max_id, min_id;
+//   this->sdf_map_->posToIndex(island.box[0], min_id);
+//   this->sdf_map_->posToIndex(island.box[1], max_id);
+
+//   // int boundary_num = 0;
+//   // int occ_num = 0;
+//   // int sum = (max_id(0) - min_id(0)) * (max_id(1) - min_id(1)) * (max_id(2) - min_id(2));
+
+//   // for (int x = min_id(0); x <= max_id(0); x++) {
+//   //   for (int y = min_id(1); y <= max_id(1); y++) {
+//   //     for (int z = min_id(2); z <= max_id(2); z++) {
+
+//   //       Eigen::Vector3i pos = Eigen::Vector3i(x, y, z);
+
+//   //       if (this->sdf_map_->getOccupancy(pos) == fast_planner::SDFMap::UNKNOWN) {
+//   //         const vector<Eigen::Vector3i> delta = { Eigen::Vector3i(1, 0, 0),
+//   //           Eigen::Vector3i(-1, 0, 0), Eigen::Vector3i(0, 1, 0), Eigen::Vector3i(0, -1, 0),
+//   //           Eigen::Vector3i(0, 0, 1), Eigen::Vector3i(0, 0, -1) };
+//   //         for (int i = 0; i < 6; i++) {
+//   //           Eigen::Vector3i neighbor = pos + delta[i];
+//   //           if (this->sdf_map_->isInMap(neighbor)) {
+//   //             if (this->sdf_map_->getOccupancy(neighbor) != fast_planner::SDFMap::UNKNOWN) {
+//   //               boundary_num++;
+//   //               break;
+//   //             }
+//   //           }
+//   //         }
+//   //       } else if (this->sdf_map_->getOccupancy(pos) == fast_planner::SDFMap::OCCUPIED) {
+//   //         occ_num++;
+//   //       }
+//   //     }
+//   //   }
+//   // }
+
+//   // // 在这里添加验证
+//   // if (boundary_num == 0) {
+//   //   ROS_ERROR("IslandFinder::isknown: Division by zero avoided! boundary_num is 0.");
+//   //   return false;  // 或者其他适合你业务逻辑的返回值
+//   // }
+//   // // double rate = boundary_num / ((double)sum);  // unknown_voxels / all_voxels
+//   // double rate = (double)occ_num / boundary_num;
+//   // std::cout << "boundary_num" << boundary_num << std::endl;
+//   // std::cout << "occ_num" << occ_num << std::endl;
+//   // if (rate >= 0.9) {
+//   //   return true;
+//   // }
+//   // return false;
+//   return false;
+// }
 
 /// @brief 计算两个矩形区域的相交面积
 /// @param min1
@@ -553,6 +653,23 @@ double IslandFinder::getOverlapArea(const Eigen::Vector3d& min1, const Eigen::Ve
       Eigen::Vector3d(intersect_x_max, intersect_y_max, 0));
 }
 
+bool IslandFinder::checkAABBIntersection(const std::vector<Eigen::Vector3d>& box1, const std::vector<Eigen::Vector3d>& box2) {
+  // 从输入中获取每个立方体的最小和最大顶点
+  const Eigen::Vector3d& minA = box1[0];
+  const Eigen::Vector3d& maxA = box1[1];
+  const Eigen::Vector3d& minB = box2[0];
+  const Eigen::Vector3d& maxB = box2[1];
+
+  // 检查每个轴上的投影是否重叠
+  // 两个一维区间 [min1, max1] 和 [min2, max2] 重叠的条件是 (min1 <= max2) && (max1 >= min2)
+  bool overlapX = (minA.x() <= maxB.x()) && (maxA.x() >= minB.x());
+  bool overlapY = (minA.y() <= maxB.y()) && (maxA.y() >= minB.y());
+  bool overlapZ = (minA.z() <= maxB.z()) && (maxA.z() >= minB.z());
+
+  // 只有当所有轴的投影都重叠时，立方体才相交
+  return overlapX && overlapY && overlapZ;
+}
+
 /// @brief 计算一个AABB的面积
 /// @param min1 最小点，
 /// @param max1 最大点
@@ -571,8 +688,10 @@ double IslandFinder::getArea(const Eigen::Vector3d& min1, const Eigen::Vector3d&
 
 void IslandFinder::refineLocalIslands(vector<int>& dropped_ids) {
   dropped_ids.clear();
+  vector<vector<Eigen::Vector3d>> clusters;
+  frontier_finder_->getFrontiers(clusters); //缓存
   for (auto& pair : this->island_boxs[drone_id_ - 1]) {
-    if (isknown(pair.second.box)) {
+    if (isknown(pair.second, clusters)) {
       dropped_ids.push_back(pair.first);
     }
   }

@@ -64,7 +64,7 @@ void FastExplorationFSM::init(ros::NodeHandle& nh) {
 
   ifinder_.reset(new IslandFinder());
 
-  ifinder_->init(expl_manager_->sdf_map_, getId(), expl_manager_->ep_->drone_num_);
+  ifinder_->init(expl_manager_->sdf_map_, expl_manager_->frontier_finder_ , getId(), expl_manager_->ep_->drone_num_);
 
   planner_manager_ = expl_manager_->planner_manager_;
   state_ = EXPL_STATE::INIT;

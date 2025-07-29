@@ -67,7 +67,7 @@ public:
   double getCostDroneToGrid(
       const Eigen::Vector3d& pos, const int& grid_id, const vector<int>& first);
   double getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& grid_id,
-      const vector<int>& first, const Eigen::Vector3d& growth_vector);
+      const Vector3d& v1, const vector<int>& first, const Eigen::Vector3d& growth_vector);
   double getCostGridToGrid(const int& id1, const int& id2, const vector<vector<int>>& firsts,
       const vector<vector<int>>& seconds, const int& drone_num);
   unique_ptr<Astar> path_finder_;

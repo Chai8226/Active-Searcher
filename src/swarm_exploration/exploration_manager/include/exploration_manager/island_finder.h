@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <math.h>
+#include <active_perception/frontier_finder.h>
 
 using namespace std;
 
@@ -20,7 +21,7 @@ typedef struct {
   double last_area;  // 用于判断是否发生变化
   Eigen::Vector3d center;  // 用来唯一标识可疑区域
   Eigen::Vector3d last_center;  // 上一次的中心位置
-  double boundary_num;  // 边界点数目
+  double frontier_pt_num;  // 边界点数目
 } Island;
 
 class IslandFinder {
@@ -29,7 +30,7 @@ public:
   }
   ~IslandFinder() {
   }
-  void init(shared_ptr<fast_planner::SDFMap> map, int drone_id, int drone_num);
+  void init(shared_ptr<fast_planner::SDFMap> map, shared_ptr<fast_planner::FrontierFinder> frontier_finder, int drone_id, int drone_num);
   int searchMSERUpdatedIslands();
   int searchCannyUpdatedIslands();
   int searchSVDUpdatedIslands();
@@ -82,7 +83,7 @@ private:
   double getArea(const Eigen::Vector3d& min1, const Eigen::Vector3d& max1);
   double getOverlapArea(const Eigen::Vector3d& min1, const Eigen::Vector3d& max1,
       const Eigen::Vector3d& min2, const Eigen::Vector3d& max2);
-  bool isknown(const vector<Eigen::Vector3d>& island_box);
+  bool isknown(Island& island, const vector<vector<Vector3d>>& clusters);
   double getGroundHeight(const Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic>& img,
       const Eigen::Vector3i& base, const vector<vector<Eigen::Vector3d>>& island_box);
 
@@ -101,8 +102,11 @@ private:
     return this->sdf_map_->toAddress(index);
   }
 
+  bool checkAABBIntersection(const std::vector<Eigen::Vector3d>& box1, const std::vector<Eigen::Vector3d>& box2);
+
   shared_ptr<OccmapProcessing> occ_process;
   shared_ptr<fast_planner::SDFMap> sdf_map_;
+  shared_ptr<fast_planner::FrontierFinder> frontier_finder_;
   // vector<vector<Eigen::Vector3d>> island_boxs;  // xy平面上的AABBs
   // vector<Island> island_boxs;
   vector<map<int, Island>> island_boxs;
@@ -111,6 +115,7 @@ private:
   int drone_num_;
   double avrg_h;  // 用来设置无人机的飞行高度（avrg_h + ep->height）
   unsigned long island_counter;
+  
 };
 
 #endif
