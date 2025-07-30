@@ -82,6 +82,7 @@ struct Destination {
   int id;    // grid id or island id
 };
 
+
 struct ExplorationData {
   vector<vector<Vector3d>> frontiers_;
   vector<vector<Vector3d>> dead_frontiers_;

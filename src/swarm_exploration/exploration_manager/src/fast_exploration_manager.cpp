@@ -683,16 +683,10 @@ int FastExplorationManager::planRapidCoverageTraj(const Vector3d& pos, const Vec
     ed_->next_goal_ = truncated_path.back();
     planner_manager_->planCoverageTraj(truncated_path, vel, acc, time_lb, target_vel);
   } else {
-    // Search kino path to exactly next viewpoint and optimize
-    std::cout << "Mid goal" << std::endl;
+    // MODIFICATION: Use A* based trajectory for mid-range goals as well.
+    std::cout << "Mid goal, using A* based planning." << std::endl;
     ed_->next_goal_ = next_pos;
-
-    if (!planner_manager_->kinodynamicReplan(pos, vel, acc, ed_->next_goal_, target_vel, time_lb)) {
-      ROS_ERROR("kinodynamicReplan FAIL!");
-      return FAIL;
-    }
-
-    ed_->kino_path_ = planner_manager_->kino_path_finder_->getKinoTraj(0.02);
+    planner_manager_->planCoverageTraj(ed_->path_next_goal_, vel, acc, time_lb, target_vel);
   }
 
   if (planner_manager_->local_data_.position_traj_.getTimeSum() < time_lb - 0.5)
