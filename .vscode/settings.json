@@ -8,6 +8,12 @@
     "/opt/ros/noetic/lib/python3/dist-packages"
   ],
   "files.associations": {
-    "vector": "cpp"
+    "vector": "cpp",
+    "core": "cpp",
+    "numericaldiff": "cpp",
+    "chrono": "cpp",
+    "cmath": "cpp",
+    "complex": "cpp",
+    "type_traits": "cpp"
   }
 }

@@ -55,13 +55,13 @@ public:
   double computeGridPathCost(const Eigen::Vector3d& pos, const vector<int>& grid_ids, const vector<int>& first, const vector<vector<int>>& firsts,
                              const vector<vector<int>>& seconds, const double& w_f);
 
-  void planDisQueue(const Vector3d& pos, const Vector3d growth_vector);
+  void planDisQueue(const Vector3d& pos, const Vector3d& growth_vector);
   bool updateVisitedGrids(const Eigen::Vector3d& cur_pos);
   void getVisitedGrids(vector<int>& grid_ids);
 
   bool findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
     const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
-    bool init, const Eigen::Vector3d& growth_vector );
+    bool init = false, const Eigen::Vector3d growth_vector = Eigen::Vector3d(0, 0, 0));
 
   // inspect 
   int planInspectMotion(const Vector3d& start_pos_, const Vector3d& pos, const Vector3d& vel, 

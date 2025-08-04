@@ -270,7 +270,7 @@ void FastPlannerManager::planInspectTraj(const vector<Eigen::Vector3d>& tour,
 }
 
 // testhigh
-void FastPlannerManager::planTrajWithTarget(const vector<Eigen::Vector3d>& tour,
+void FastPlannerManager::planCoverageTraj(const vector<Eigen::Vector3d>& tour,
     const Eigen::Vector3d& cur_vel, const Eigen::Vector3d& cur_acc, const double& time_lb,
     const Eigen::Vector3d& target_vel) {
   if (tour.empty()) ROS_ERROR("Empty path to traj planner");

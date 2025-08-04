@@ -49,7 +49,7 @@ public:
   bool checkSwarmCollision(const int& drone_id);
 
   // testhigh
-  void planTrajWithTarget(const vector<Eigen::Vector3d>& tour, const Eigen::Vector3d& cur_vel,
+  void planCoverageTraj(const vector<Eigen::Vector3d>& tour, const Eigen::Vector3d& cur_vel,
       const Eigen::Vector3d& cur_acc, const double& time_lb = -1,
       const Eigen::Vector3d& target_vel = Eigen::Vector3d(0, 0, 0));
 

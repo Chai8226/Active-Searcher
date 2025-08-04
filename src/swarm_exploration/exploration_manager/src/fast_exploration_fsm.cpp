@@ -327,6 +327,7 @@ void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
             // Replan if traj is almost fully executed
             ROS_WARN("Replan: traj fully executed=================================");
             need_replan = true;
+            updateLocalDisqueue();
           } else if (disqueue_replan) {
             ROS_WARN("Replan: reached disqueque head=================================");
             need_replan = true;
@@ -792,12 +793,11 @@ void FastExplorationFSM::frontierCallback(const ros::TimerEvent& e) {
       expl_manager_->updateVisitedGrids(fd_->odom_pos_);
       disqueue_replan = updateLocalDisqueue();
       Eigen::Vector3d growth_vector;
-      int tmp = callLocalIslandUpdater(expl_manager_->ed_->growth_vector_);
-      if(expl_manager_->ed_->growth_vector_.norm() > 0.03){
-        expl_manager_->planDisQueue(fd_->odom_pos_, expl_manager_->ed_->growth_vector_);
-        expl_manager_->ed_->growth_vector_ = Eigen::Vector3d(0, 0, 0);
+      int tmp = callLocalIslandUpdater(growth_vector);
+      if(growth_vector.norm() >= 1) {
+        expl_manager_->planDisQueue(fd_->odom_pos_, growth_vector);
         disqueue_replan = true;  // 重规划
-      }
+      } 
       if (tmp == 1) {
         visualize(3);
         // ROS_WARN("id %d :island! center1(%lf, %lf)", getId(), center1(0), center1(1));
@@ -817,7 +817,7 @@ bool FastExplorationFSM::updateLocalDisqueue(){
   bool update_flag = false;
   auto& dis_queque = expl_manager_->ed_->dis_queue;
   if (!dis_queque.empty()) {
-    if ((fd_->odom_pos_ - dis_queque[0]).norm() < 0.75) {  // 0.75
+    if ((fd_->odom_pos_ - dis_queque[0].pos).norm() < 0.75) {  // 0.75
       // auto& grid_ids = expl_manager_->ed_->swarm_state_[getId() - 1].grid_ids_;
       dis_queque.erase(dis_queque.begin());
       update_flag = true;  // 重规划
@@ -849,8 +849,7 @@ int FastExplorationFSM::callLocalIslandUpdater(Eigen::Vector3d& growth_vector) {
       if(tmp.norm() > 0.02)  // 如果增长向量大于0.02
         growth_vector += tmp;
     }
-    
-    expl_manager_->planDisQueue(fd_->odom_pos_, growth_vector); //testhigh
+     //testhigh
     //cout << "id " << getId() << "find newe island, switch to OPT" << endl;
     // need_opt = true;  // 需要优化
   }
