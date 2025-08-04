@@ -475,7 +475,7 @@ double HGrid::getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& 
     const auto dir = (grid.center_ - pos).normalized();  // 当前位置到网格中心的向量
     const auto vdir = v1.normalized();
     double diff = acos(vdir.dot(dir));  // 速度方向的变化量
-    cost += 0.8 * diff;
+    cost += 1.5 * diff;
   }
 
   dist1 = (pos - grid.center_).norm();
@@ -509,7 +509,7 @@ double HGrid::getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& 
   std::cout << "growth vector: " << growth_vector.norm() << std::endl;
   std::cout << "Growth encouragement: " << growth_encouragement << std::endl;
   if (growth_encouragement > 0) {
-    cost -= 0.5 * growth_encouragement;  // 如果生长方向的代价为正，增加到总代价中
+    cost -= 0.8 * growth_encouragement;  // 如果生长方向的代价为正，增加到总代价中
   }
   // if (drone_num > 1) cost *= w_first_;
   return cost;
