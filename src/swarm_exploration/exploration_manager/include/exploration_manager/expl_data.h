@@ -68,17 +68,12 @@ struct DroneState {
   bool opt;
 };
 
-struct MotionTarget {
-  Eigen::Vector3d position;
-  Eigen::Vector3d velocity;
-  double          yaw;
-
-  // 默认构造函数
-  MotionTarget() : position(0, 0, 0), velocity(0, 0, 0), yaw(0.0) {}
-
-  // 带参构造函数
-  MotionTarget(const Eigen::Vector3d& pos, const Eigen::Vector3d& vel, double y)
-    : position(pos), velocity(vel), yaw(y) {}
+// 新增：定义一个包含位置、速度、偏航角的航点目标状态结构体
+struct WaypointTargetState {
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  Eigen::Vector3d pos;
+  Eigen::Vector3d vel;
+  double yaw;
 };
 
 struct Destination {
@@ -86,6 +81,7 @@ struct Destination {
   int type;  // 0:high, 1:low
   int id;    // grid id or island id
 };
+
 
 struct ExplorationData {
   vector<vector<Vector3d>> frontiers_;
@@ -133,8 +129,8 @@ struct ExplorationData {
   //修改 用于无frontier全覆盖的位置确认
   //std::unordered_set<int> visited_grid_ids; 
   double allocation_cost, other_allocation_cost; 
-  // std::vector<MotionTarget> dis_queue;
-  std::vector<Vector3d> dis_queue;
+  std::vector<WaypointTargetState> dis_queue;
+  // std::vector<Vector3d> dis_queue;
   std::unordered_map<int, int> visited_grid_map;
   // vector<vector<Eigen::Vector3d>> islands; 
 
