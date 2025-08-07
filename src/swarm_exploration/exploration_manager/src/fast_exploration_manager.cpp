@@ -119,8 +119,10 @@ void FastExplorationManager::initialize(ros::NodeHandle& nh) {
   // ofstream fout;
   // fout.open("/home/boboyu/Desktop/RAL_Time/frontier.txt");
   // fout.close();
-}
 
+  island_finder_.reset(new IslandFinder());
+  island_finder_->init(this->sdf_map_, this->frontier_finder_ , this->ep_->drone_id_, this->ep_->drone_num_);
+}
 
 /// @brief 根据所有无人机的当前位置，更新visited_grid_map
 /// @param cur_pos 当前无人机的位置
@@ -132,11 +134,10 @@ bool FastExplorationManager::updateVisitedGrids(const Eigen::Vector3d& cur_pos) 
   vector<int> all_grid_ids;
   hgrid_->getActiveGrids(all_grid_ids);
   for (const auto& id : all_grid_ids) {
-    if ((hgrid_->getCenter(id) - cur_pos).norm() < 0.75){
+    if ((hgrid_->getCenter(id) - cur_pos).norm() < 0.75) {
       visited[id] = 1;
       local_flag = true;
-    }  
-    else {
+    } else {
       for (int i = 0; i < states.size(); ++i) {
         if (ep_->drone_id_ == i + 1) continue;
         if ((hgrid_->getCenter(id) - states[i].pos_).norm() < 0.75) {
@@ -159,7 +160,8 @@ void FastExplorationManager::getVisitedGrids(vector<int>& grid_ids) {
 }
 
 // /**
-//  * @brief 根据swarm中所有没有被覆盖过的grid_ids规划一次访问顺序，并为每个航点计算目标状态（位置、速度、yaw）。
+//  * @brief
+//  根据swarm中所有没有被覆盖过的grid_ids规划一次访问顺序，并为每个航点计算目标状态（位置、速度、yaw）。
 //  * @param pos           无人机当前位置
 //  * @param growth_vector (可选) 区域增长向量
 //  */
@@ -187,8 +189,9 @@ void FastExplorationManager::getVisitedGrids(vector<int>& grid_ids) {
 //       detailed_waypoints.push_back(Vector3d(center(0), center(1), ep_->height_));
 
 //       if (i < grid_ids.size() - 1) {
-//           auto midpos1 = (hgrid_->getCenter(grid_ids[i + 1]) + 2 * hgrid_->getCenter(grid_ids[i])) / 3.0;
-//           auto midpos2 = (2 * hgrid_->getCenter(grid_ids[i + 1]) + hgrid_->getCenter(grid_ids[i])) / 3.0;
+//           auto midpos1 = (hgrid_->getCenter(grid_ids[i + 1]) + 2 *
+//           hgrid_->getCenter(grid_ids[i])) / 3.0; auto midpos2 = (2 * hgrid_->getCenter(grid_ids[i
+//           + 1]) + hgrid_->getCenter(grid_ids[i])) / 3.0;
 //           detailed_waypoints.push_back(Vector3d(midpos1(0), midpos1(1), ep_->height_));
 //           detailed_waypoints.push_back(Vector3d(midpos2(0), midpos2(1), ep_->height_));
 //       }
@@ -207,14 +210,14 @@ void FastExplorationManager::getVisitedGrids(vector<int>& grid_ids) {
 
 //       Eigen::Vector3d dir_prev = Eigen::Vector3d::Zero();
 //       Eigen::Vector3d dir_next = Eigen::Vector3d::Zero();
-      
+
 //       // 计算前一段和后一段的方向向量
 //       if (i > 0) {
 //           dir_prev = (detailed_waypoints[i] - detailed_waypoints[i-1]);
 //       } else {
 //           dir_prev = (detailed_waypoints[i] - pos); // 第一段，相对于当前位置
 //       }
-      
+
 //       if (i < detailed_waypoints.size() - 1) {
 //           dir_next = (detailed_waypoints[i+1] - detailed_waypoints[i]);
 //       }
@@ -228,13 +231,14 @@ void FastExplorationManager::getVisitedGrids(vector<int>& grid_ids) {
 //            target_state.yaw = atan2(dir_prev.y(), dir_prev.x());
 //       } else {
 //           // 如果只有一个点，朝向它
-//            target_state.yaw = atan2(target_state.pos.y() - pos.y(), target_state.pos.x() - pos.x());
+//            target_state.yaw = atan2(target_state.pos.y() - pos.y(), target_state.pos.x() -
+//            pos.x());
 //       }
 
 //       // 计算目标速度
 //       // 默认速度为0（在终点或拐角处）
-//       target_state.vel = Eigen::Vector3d::Zero(); 
-      
+//       target_state.vel = Eigen::Vector3d::Zero();
+
 //       bool is_corner = false;
 //       if (i > 0 && i < detailed_waypoints.size() - 1) {
 //           // 使用点积检查是否为拐角，与原逻辑保持一致
@@ -252,8 +256,55 @@ void FastExplorationManager::getVisitedGrids(vector<int>& grid_ids) {
 //   }
 // }
 
+/// @brief
+/// 找到所有连接起当前grid和非访问grid的未知区域，根据他们的面积为对应的相邻grid施加一个激励值
+/// @param pos  当前位置
+/// @param island_boxes   岛屿的边界框
+/// @param unvisited_ids  未访问的栅格ID
+/// @param encouragements   鼓励值向量，对应每个id 的 unvisited_ids的激励值
+/// @return
+Eigen::Vector3d FastExplorationManager::getBoundaryIslandEcrgmts(const Eigen::Vector3d& pos,  const vector<int>& unvisited_ids,
+    vector<double>& encouragements) {
+  encouragements.clear();
+  encouragements.resize(unvisited_ids.size(), 0.0);  // 初始化鼓励值为0
+  const int cur_id = hgrid_->posToGridId(pos);
+  vector<Eigen::Vector3d> cur_grid_box;
+  cur_grid_box.resize(2);
+  hgrid_->getGridBox(cur_id, cur_grid_box[0], cur_grid_box[1]);
+  
+  std::map<int, Island> island_map;
+  island_finder_->getAllIslandBoxs(island_map, ep_->drone_id_);
+  for (const auto& pair : island_map) {
+    // 检查当这个isalnd是否和当前区域相交
+    const auto& island_min = pair.second.box[0];
+    const auto& island_max = pair.second.box[1];
+    if (cur_grid_box[1].x() < island_min.x() || cur_grid_box[0].x() > island_max.x() ||
+        cur_grid_box[1].y() < island_min.y() || cur_grid_box[0].y() > island_max.y())
+      continue;  // 没有相交
+
+    for (int i = 0; i < unvisited_ids.size(); ++i) {  // 再检查这个island是否和未访问的栅格相交
+      int grid_id = unvisited_ids[i];
+      Eigen::Vector3d min_pt, max_pt;
+      hgrid_->getGridBox(grid_id, min_pt, max_pt);
+
+      // 检查当前栅格是否与岛屿相交
+      if (min_pt.x() > island_max.x() || max_pt.x() < island_min.x() ||
+          min_pt.y() > island_max.y() || max_pt.y() < island_min.y()) {
+        continue;  // 没有相交
+      }
+
+      // 认为这个island为连接两个区域的走廊，计算这个island的面积
+      double area = (island_max.x() - island_min.x()) * (island_max.y() - island_min.y());
+      if (area < 0.1) continue;
+      // 把这个面积作为激励值
+      encouragements[i] = area;
+    }
+  }
+}
+
 /**
- * @brief 根据swarm中所有没有被覆盖过的grid_ids规划一次访问顺序，并为每个航点计算目标状态（位置、速度、yaw）。
+ * @brief
+ * 根据swarm中所有没有被覆盖过的grid_ids规划一次访问顺序，并为每个航点计算目标状态（位置、速度、yaw）。
  * 修正：移除了在起点和第一个栅格中心之间不必要的中间点，以解决速度变慢的问题。
  * @param pos           无人机当前位置
  * @param growth_vector (可选) 区域增长向量
@@ -271,7 +322,7 @@ void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d& g
   dis_queue.clear();
 
   if (grid_ids.size() == 0) {
-      return;
+    return;
   }
 
   // 2. 生成包含中间过渡点的详细航点列表
@@ -285,83 +336,85 @@ void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d& g
 
   // 遍历栅格点，添加栅格中心点及其后的中间点
   for (int i = 0; i < grid_ids.size(); ++i) {
-      auto center = hgrid_->getCenter(grid_ids[i]);
-      detailed_waypoints.push_back(Vector3d(center(0), center(1), ep_->height_));
+    auto center = hgrid_->getCenter(grid_ids[i]);
+    detailed_waypoints.push_back(Vector3d(center(0), center(1), ep_->height_));
 
-      // 只在两个栅格中心之间添加一个中间点，这个点更靠近当前段的起点(center)
-      if (i < grid_ids.size() - 1) {
-          auto next_center = hgrid_->getCenter(grid_ids[i + 1]);
-          auto midpos = (next_center + 2 * center) / 3.0;
-          detailed_waypoints.push_back(Vector3d(midpos(0), midpos(1), ep_->height_));
-      }
+    // 只在两个栅格中心之间添加一个中间点，这个点更靠近当前段的起点(center)
+    if (i < grid_ids.size() - 1) {
+      auto next_center = hgrid_->getCenter(grid_ids[i + 1]);
+      auto midpos = (next_center + 2 * center) / 3.0;
+      detailed_waypoints.push_back(Vector3d(midpos(0), midpos(1), ep_->height_));
+    }
   }
 
   if (detailed_waypoints.empty()) {
-      return;
+    return;
   }
 
   // 3. 为每个详细航点计算目标状态（速度和Yaw）
   const double max_speed = 1.5;
 
   for (size_t i = 0; i < detailed_waypoints.size(); ++i) {
-      WaypointTargetState target_state;
-      target_state.pos = detailed_waypoints[i];
+    WaypointTargetState target_state;
+    target_state.pos = detailed_waypoints[i];
 
-      Eigen::Vector3d dir_prev = Eigen::Vector3d::Zero();
-      Eigen::Vector3d dir_next = Eigen::Vector3d::Zero();
-      
-      if (i > 0) {
-          dir_prev = (detailed_waypoints[i] - detailed_waypoints[i-1]);
-      } else {
-          dir_prev = (detailed_waypoints[i] - pos);
-      }
-      
-      if (i < detailed_waypoints.size() - 1) {
-          dir_next = (detailed_waypoints[i+1] - detailed_waypoints[i]);
-      }
+    Eigen::Vector3d dir_prev = Eigen::Vector3d::Zero();
+    Eigen::Vector3d dir_next = Eigen::Vector3d::Zero();
 
-      if (dir_next.norm() > 1e-6) {
-           target_state.yaw = atan2(dir_next.y(), dir_next.x());
-      } else if (dir_prev.norm() > 1e-6) {
-           target_state.yaw = atan2(dir_prev.y(), dir_prev.x());
-      } else {
-           target_state.yaw = atan2(target_state.pos.y() - pos.y(), target_state.pos.x() - pos.x());
-      }
+    if (i > 0) {
+      dir_prev = (detailed_waypoints[i] - detailed_waypoints[i - 1]);
+    } else {
+      dir_prev = (detailed_waypoints[i] - pos);
+    }
 
-      target_state.vel = Eigen::Vector3d::Zero(); 
-      
-      // ======================== 修正点在这里 ========================
-      // 修正了拐角的判断逻辑。
-      // 原来的 is_corner 判断 (dir_prev.dot(dir_next) < 1e-3) 过于严格，
-      // 只能检测到接近90度或更大的转弯，对于锐角转弯（如45度）会失效，
-      // 导致无人机尝试高速通过非直角弯，这是不安全的。
-      bool is_corner = false;
-      if (i > 0 && i < detailed_waypoints.size() - 1) {
-          // 使用归一化向量的点积（即夹角余弦）来判断。
-          // 如果向量方向变化不大（夹角小，余弦值接近1），则不认为是拐角。
-          // 如果方向变化明显（夹角大，余弦值小于一个阈值），则认为是拐角。
-          if (dir_prev.norm() > 1e-6 && dir_next.norm() > 1e-6) {
-              // 如果夹角余弦小于0.985 (约等于10度)，就认为是需要减速的拐角。
-              if (dir_prev.normalized().dot(dir_next.normalized()) < 0.985) {
-                  is_corner = true;
-              }
-          }
-      }
-      // ===============================================================
+    if (i < detailed_waypoints.size() - 1) {
+      dir_next = (detailed_waypoints[i + 1] - detailed_waypoints[i]);
+    }
 
-      // 如果不是终点且不是拐角，则设定巡航速度
-      if (i < detailed_waypoints.size() - 1 && !is_corner) {
-          target_state.vel = dir_next.normalized() * max_speed / 3.0 * 2.0;
-      }
+    if (dir_next.norm() > 1e-6) {
+      target_state.yaw = atan2(dir_next.y(), dir_next.x());
+    } else if (dir_prev.norm() > 1e-6) {
+      target_state.yaw = atan2(dir_prev.y(), dir_prev.x());
+    } else {
+      target_state.yaw = atan2(target_state.pos.y() - pos.y(), target_state.pos.x() - pos.x());
+    }
 
-      dis_queue.push_back(target_state);
+    target_state.vel = Eigen::Vector3d::Zero();
+
+    // ======================== 修正点在这里 ========================
+    // 修正了拐角的判断逻辑。
+    // 原来的 is_corner 判断 (dir_prev.dot(dir_next) < 1e-3) 过于严格，
+    // 只能检测到接近90度或更大的转弯，对于锐角转弯（如45度）会失效，
+    // 导致无人机尝试高速通过非直角弯，这是不安全的。
+    bool is_corner = false;
+    if (i > 0 && i < detailed_waypoints.size() - 1) {
+      // 使用归一化向量的点积（即夹角余弦）来判断。
+      // 如果向量方向变化不大（夹角小，余弦值接近1），则不认为是拐角。
+      // 如果方向变化明显（夹角大，余弦值小于一个阈值），则认为是拐角。
+      if (dir_prev.norm() > 1e-6 && dir_next.norm() > 1e-6) {
+        // 如果夹角余弦小于0.985 (约等于10度)，就认为是需要减速的拐角。
+        if (dir_prev.normalized().dot(dir_next.normalized()) < 0.985) {
+          is_corner = true;
+        }
+      }
+    }
+    // ===============================================================
+
+    // 如果不是终点且不是拐角，则设定巡航速度
+    if (i < detailed_waypoints.size() - 1 && !is_corner) {
+      target_state.vel = dir_next.normalized() * max_speed / 3.0 * 2.0;
+    }
+
+    dis_queue.push_back(target_state);
   }
 }
 
 // /**
-//  * @brief 根据swarm中的所有没有被覆盖过的grid_ids规划一次访问顺序，转存在dis_queque队列之中，同时加入中间点来矫正轨迹
+//  * @brief
+//  根据swarm中的所有没有被覆盖过的grid_ids规划一次访问顺序，转存在dis_queque队列之中，同时加入中间点来矫正轨迹
 //  */
-// void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d growth_vector = Vector3d(0, 0, 0)) {
+// void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d growth_vector =
+// Vector3d(0, 0, 0)) {
 //   // const auto& grid_ids = ed_->swarm_state_[ep_->drone_id_ - 1].grid_ids_;
 //   const Vector3d vel = Vector3d(0, 0, 0);
 //   vector<int> grid_ids;
@@ -405,7 +458,8 @@ void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d& g
 //   }
 // }
 
-// int FastExplorationManager::planRapidCoverageMotion(const Vector3d& start_pos_, const Vector3d& pos,
+// int FastExplorationManager::planRapidCoverageMotion(const Vector3d& start_pos_, const Vector3d&
+// pos,
 //     const Vector3d& vel, const Vector3d& acc, const Vector3d& yaw) {
 //   ros::Time t1 = ros::Time::now();
 //   auto t2 = t1;
@@ -504,7 +558,7 @@ void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d& g
 // }
 
 int FastExplorationManager::planRapidCoverageMotion(const Vector3d& start_pos_, const Vector3d& pos,
-  const Vector3d& vel, const Vector3d& acc, const Vector3d& yaw) {
+    const Vector3d& vel, const Vector3d& acc, const Vector3d& yaw) {
   ros::Time t1 = ros::Time::now();
 
   std::cout << "start pos: " << pos.transpose() << ", vel: " << vel.transpose()
@@ -514,21 +568,21 @@ int FastExplorationManager::planRapidCoverageMotion(const Vector3d& start_pos_, 
 
   // 1. 检查队列是否为空
   if (dis_queue.empty()) {
-      auto& grid_ids = ed_->swarm_state_[ep_->drone_id_ - 1].grid_ids_;
-      if (grid_ids.empty()) {
-           ROS_WARN("Empty grid and empty queue, nothing to do.");
-           return NO_GRID;
-      } else {
-           ROS_WARN("id %d: grid tour finished or queue is not planned!", ep_->drone_id_);
-           return NO_GRID;
-      }
+    auto& grid_ids = ed_->swarm_state_[ep_->drone_id_ - 1].grid_ids_;
+    if (grid_ids.empty()) {
+      ROS_WARN("Empty grid and empty queue, nothing to do.");
+      return NO_GRID;
+    } else {
+      ROS_WARN("id %d: grid tour finished or queue is not planned!", ep_->drone_id_);
+      return NO_GRID;
+    }
   }
 
   // 2. 从队列头部获取预先计算好的目标状态
   // 注意：这里的 .front() 只是获取，并没有移除。
   // 您应该在您的状态机（FSM）中，当无人机接近或到达一个航点后，再将该航点从队列中 pop_front()。
   const auto& next_target = dis_queue.front();
-  
+
   Vector3d next_pos = next_target.pos + Eigen::Vector3d(0, 0, ed_->ground_height_);
   double next_yaw = next_target.yaw;
   Vector3d target_vel = next_target.vel;
@@ -536,20 +590,19 @@ int FastExplorationManager::planRapidCoverageMotion(const Vector3d& start_pos_, 
   // 更新 exploration data 用于可视化或其他模块
   ed_->next_pos_ = next_pos;
   ed_->next_yaw_ = next_yaw;
-  std::cout << "Executing to next view: " << next_pos.transpose() 
-            << ", yaw: " << next_yaw 
+  std::cout << "Executing to next view: " << next_pos.transpose() << ", yaw: " << next_yaw
             << ", target_vel: " << target_vel.transpose() << std::endl;
 
   // 3. 调用底层轨迹规划器，传入目标状态
   if (planRapidCoverageTraj(pos, vel, acc, yaw, next_pos, next_yaw, target_vel) == FAIL) {
-      ROS_WARN("planRapidCoverageTraj Fail");
-      return FAIL;
+    ROS_WARN("planRapidCoverageTraj Fail");
+    return FAIL;
   }
-  
+
   double total = (ros::Time::now() - t1).toSec();
   ROS_INFO("Total time in planRapidCoverageMotion: %lf", total);
   ROS_ERROR_COND(total > 0.1, "Total time too long!!!");
-  
+
   return SUCCEED;
 }
 
@@ -609,7 +662,8 @@ int FastExplorationManager::planTrajToView(const Vector3d& pos, const Vector3d& 
     std::cout << "Mid goal" << std::endl;
     ed_->next_goal_ = next_pos;
 
-    if (!planner_manager_->kinodynamicReplan( pos, vel, acc, ed_->next_goal_, Vector3d(0, 0, 0), time_lb)) {
+    if (!planner_manager_->kinodynamicReplan(
+            pos, vel, acc, ed_->next_goal_, Vector3d(0, 0, 0), time_lb)) {
       ROS_ERROR("kinodynamicReplan FAIL!");
       return FAIL;
     }
@@ -738,8 +792,8 @@ int FastExplorationManager::updateFrontierStruct(const Eigen::Vector3d& pos) {
 
   double mat_time = (ros::Time::now() - t1).toSec();
   double total_time = frontier_time + view_time + mat_time;
-  // ROS_INFO("Drone %d: frontier t: %lf, viewpoint t: %lf, mat: %lf", ep_->drone_id_, frontier_time,
-      // view_time, mat_time);
+  // ROS_INFO("Drone %d: frontier t: %lf, viewpoint t: %lf, mat: %lf", ep_->drone_id_,
+  // frontier_time, view_time, mat_time);
 
   // ROS_INFO("Total t: %lf", (ros::Time::now() - t2).toSec());
   return ed_->frontiers_.size();
@@ -1209,7 +1263,8 @@ double FastExplorationManager::computeGridPathCost(const Eigen::Vector3d& pos,
  * @brief 简化findGlobalTourOfGrid， 只保留初始化分配部分，如果是drone1 且未初始化
  * 自动修改swarm_data
  */
-void FastExplorationManager::initOneTimeGridAllocation(vector<int>& first_ids, vector<int>& second_ids) {
+void FastExplorationManager::initOneTimeGridAllocation(
+    vector<int>& first_ids, vector<int>& second_ids) {
   auto& grid_ids = ed_->swarm_state_[ep_->drone_id_ - 1].grid_ids_;
   hgrid_->initHgridAlloaction(ep_->drone_id_, grid_ids, {}, first_ids, second_ids);
 }
@@ -1375,8 +1430,8 @@ bool FastExplorationManager::findGlobalTourOfGrid(const vector<Eigen::Vector3d>&
 }
 
 /**
- * @brief 根据本机swarm data中分配到的grid id，
- * 调用求解器规划最佳访问顺序，输出到indices。ed_也会顺便同步（便于fsm中绘图时调用）
+ * @brief 根据本机swarm data中分配到的grid
+ * id，首先找到其中还没有被访问的，然后调用求解器规划最佳访问顺序，输出到indices。
  */
 bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
     const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
@@ -1392,13 +1447,14 @@ bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d
       grid_ids.push_back(local_grid_ids[i]);
     }
   }
+  //getBoundaryIslandEcrgmts(positions[0], )
 
   // hgrid_->updateBaseCoor();  // Use the latest basecoor transform of swarm
 
   vector<int> first_ids, second_ids;
   // hgrid_->inputFrontiers(ed_->averages_);
 
-  hgrid_->getConsistentGrid(ed_->last_grid_ids_, grid_ids,  first_ids, second_ids);
+  hgrid_->getConsistentGrid(ed_->last_grid_ids_, grid_ids, first_ids, second_ids);
 
   if (grid_ids.empty()) {
     ROS_WARN("Empty dominance.");
@@ -1413,9 +1469,11 @@ bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d
   Eigen::MatrixXd mat;
   // uniform_grid_->getCostMatrix(positions, velocities, first_ids, grid_ids, mat);
   if (!init)
-    hgrid_->getCoverageCostMatrix(positions, velocities, { first_ids }, { second_ids }, grid_ids, mat, growth_vector);
+    hgrid_->getCoverageCostMatrix(
+        positions, velocities, { first_ids }, { second_ids }, grid_ids, mat, growth_vector);
   else
-    hgrid_->getCoverageCostMatrix(positions, velocities, { {} }, { {} }, grid_ids, mat, growth_vector);
+    hgrid_->getCoverageCostMatrix(
+        positions, velocities, { {} }, { {} }, grid_ids, mat, growth_vector);
 
   double mat_time = (ros::Time::now() - t1).toSec();
 
@@ -1678,10 +1736,10 @@ void FastExplorationManager::findTourOfFrontier(const Vector3d& cur_pos, const V
   //     parse_time, indices.size());
 }
 
-
 // ========================== INSPECT ===========================
 int FastExplorationManager::planInspectMotion(const Vector3d& start_pos_, const Vector3d& pos,
-    const Vector3d& vel, const Vector3d& acc, const Vector3d& yaw, const vector<Vector3d>& island_box) {
+    const Vector3d& vel, const Vector3d& acc, const Vector3d& yaw,
+    const vector<Vector3d>& island_box) {
   if (island_box.size() < 2) return NO_VALID_ISLAND;
 
   ros::Time t1 = ros::Time::now();
@@ -1701,7 +1759,7 @@ int FastExplorationManager::planInspectMotion(const Vector3d& start_pos_, const 
   vector<int> frontier_tour_indices;
   Vector3d next_pos;
   double next_yaw;
-  
+
   if (relevant_frontier_ids.size() == 1) {
     int frt_id = relevant_frontier_ids[0];
     vector<Viewpoint> vps;
@@ -1719,9 +1777,10 @@ int FastExplorationManager::planInspectMotion(const Vector3d& start_pos_, const 
     }
     next_pos = vps[min_cost_id].pos_;
     next_yaw = vps[min_cost_id].yaw_;
-    
+
   } else if (relevant_frontier_ids.size() > 1) {
-    findInspectTourOfFrontier(pos, vel, yaw, relevant_frontier_ids, island_box, frontier_tour_indices);
+    findInspectTourOfFrontier(
+        pos, vel, yaw, relevant_frontier_ids, island_box, frontier_tour_indices);
     if (frontier_tour_indices.empty()) {
       ROS_WARN("[INSP] Failed to find a tour for island's frontiers, go to nearst one");
 
@@ -1794,7 +1853,8 @@ void FastExplorationManager::findInspectTourOfFrontier(const Vector3d& cur_pos,
   vector<double> yaws = { cur_yaw[0] };
 
   Eigen::MatrixXd mat;
-  frontier_finder_->getInspectCostMatrix(positions, velocities, yaws, ftr_ids, island_box[0], island_box[1], mat);
+  frontier_finder_->getInspectCostMatrix(
+      positions, velocities, yaws, ftr_ids, island_box[0], island_box[1], mat);
   const int dimension = mat.rows();
   cout << "mat: " << mat << endl;
 
@@ -1899,7 +1959,8 @@ void FastExplorationManager::findInspectTourOfFrontier(const Vector3d& cur_pos,
   double parse_time = (ros::Time::now() - t1).toSec();
 }
 
-void FastExplorationManager::getFrontiersInBox(const Eigen::Vector3d& bmin, const Eigen::Vector3d& bmax, vector<int>& ftr_ids_in_box) {
+void FastExplorationManager::getFrontiersInBox(
+    const Eigen::Vector3d& bmin, const Eigen::Vector3d& bmax, vector<int>& ftr_ids_in_box) {
   ftr_ids_in_box.clear();
   vector<pair<Eigen::Vector3d, Eigen::Vector3d>> all_frontier_boxes;
   frontier_finder_->getFrontierBoxes(all_frontier_boxes);
@@ -1923,7 +1984,7 @@ void FastExplorationManager::getFrontiersInBox(const Eigen::Vector3d& bmin, cons
 
     if (has_overlap) {
       cout << "Frontier box id:" << i << " box: ";
-      cout << frontier_bmin.transpose() << "   " << frontier_bmax.transpose() << endl; 
+      cout << frontier_bmin.transpose() << "   " << frontier_bmax.transpose() << endl;
       // frontier_finder_ 中的 frontier id 与其在列表中的索引是一致的
       ftr_ids_in_box.push_back(i);
     }

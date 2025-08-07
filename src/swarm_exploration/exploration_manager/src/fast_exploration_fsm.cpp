@@ -62,9 +62,9 @@ void FastExplorationFSM::init(ros::NodeHandle& nh) {
   expl_manager_->initialize(nh);
   visualization_.reset(new PlanningVisualization(nh));
 
-  ifinder_.reset(new IslandFinder());
+  // ifinder_.reset(new IslandFinder());
 
-  ifinder_->init(expl_manager_->sdf_map_, expl_manager_->frontier_finder_ , getId(), expl_manager_->ep_->drone_num_);
+  // ifinder_->init(expl_manager_->sdf_map_, expl_manager_->frontier_finder_ , getId(), expl_manager_->ep_->drone_num_);
 
   planner_manager_ = expl_manager_->planner_manager_;
   state_ = EXPL_STATE::INIT;
@@ -831,21 +831,21 @@ int FastExplorationFSM::callLocalIslandUpdater(Eigen::Vector3d& growth_vector) {
   // double begin_time = ros::Time::now().toSec();
   // auto tmp = ifinder_->searchCannyUpdatedIslands();
   // auto tmp = ifinder_->searchSVDUpdatedIslands(); //入口
-  auto tmp = ifinder_->searchMSERUpdatedIslands();
+  auto tmp = expl_manager_->island_finder_->searchMSERUpdatedIslands();
   vector<int> dropped_ids;
-  ifinder_->refineLocalIslands(dropped_ids);
+  expl_manager_->island_finder_->refineLocalIslands(dropped_ids);
   map<int, Island> new_islands;
-  ifinder_->getIslandToPub(new_islands);
+  expl_manager_->island_finder_->getIslandToPub(new_islands);
   expl_manager_->ed_->ground_height_ = 0;
 
   auto& local_buffer = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
-  ifinder_->getAllIslandBoxs(local_buffer);  // 更新本地island库
+  expl_manager_->island_finder_->getAllIslandBoxs(local_buffer);  // 更新本地island库
   
   growth_vector = Eigen::Vector3d(0, 0, 0);
   if (!new_islands.empty()) {
     for (const auto& pair : new_islands) {
       //local_buffer[pair.first] = pair.second;
-      auto tmp = ifinder_->getGrowthVector(pair.first, fd_->odom_pos_);
+      auto tmp = expl_manager_->island_finder_->getGrowthVector(pair.first, fd_->odom_pos_);
       if(tmp.norm() > 0.02)  // 如果增长向量大于0.02
         growth_vector += tmp;
     }
@@ -864,7 +864,7 @@ void FastExplorationFSM::islandTimerCallback(const ros::TimerEvent& e) {
   // 发布island array消息
   bool have_stable = false;
   map<int, Island> island_buffer;
-  ifinder_->getAllIslandBoxs(island_buffer);
+  expl_manager_->island_finder_->getAllIslandBoxs(island_buffer);
   exploration_manager::IslandArray island_msg;
   island_msg.header.stamp = ros::Time::now();
   island_msg.header.frame_id = "world";
@@ -891,10 +891,10 @@ void FastExplorationFSM::islandTimerCallback(const ros::TimerEvent& e) {
     }
     island_msg.islands.push_back(islandbox);
     // ROS_WARN("IS IT STABLE? %d", myisland.state);
-    if (ifinder_->isIslandStable(pair.first)) {
+    if (expl_manager_->island_finder_->isIslandStable(pair.first)) {
       have_stable = true;  // 有稳定的island
       ROS_WARN("set completed island %d", pair.first);
-      ifinder_->setCompleted(pair.first);  // 稳定的island发布出去
+      expl_manager_->island_finder_->setCompleted(pair.first);  // 稳定的island发布出去
     }
   }
   if (have_stable) {
@@ -921,7 +921,7 @@ void FastExplorationFSM::islandMsgCallback(const exploration_manager::IslandArra
     tmp.state = COMPLETED;
     from_island_buffer[islandbox.island_id] = tmp;
   }
-  ifinder_->updateGlobalIslandMaps(from_island_buffer, msg->drone_id);
+  expl_manager_->island_finder_->updateGlobalIslandMaps(from_island_buffer, msg->drone_id);
 }
 
 /**

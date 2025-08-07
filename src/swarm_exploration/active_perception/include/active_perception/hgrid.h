@@ -71,6 +71,8 @@ public:
   double getCostGridToGrid(const int& id1, const int& id2, const vector<vector<int>>& firsts,
       const vector<vector<int>>& seconds, const int& drone_num);
   unique_ptr<Astar> path_finder_;
+  void getGridBox(const int& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt);
+  int posToGridId(const Eigen::Vector3d& pos);
 
 private:
   void coarseToFineId(const int& coarse, vector<int>& fines);

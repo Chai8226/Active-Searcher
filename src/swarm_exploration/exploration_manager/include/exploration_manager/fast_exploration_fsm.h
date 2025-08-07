@@ -89,7 +89,7 @@ private:
   shared_ptr<FastExplorationManager> expl_manager_;
   shared_ptr<PlanningVisualization> visualization_;
 
-  shared_ptr<IslandFinder> ifinder_;
+  //shared_ptr<IslandFinder> ifinder_;
 
   shared_ptr<FSMParam> fp_;
   shared_ptr<FSMData> fd_;

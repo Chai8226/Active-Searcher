@@ -822,4 +822,22 @@ void HGrid::getGridMarker2(vector<Eigen::Vector3d>& pts, vector<string>& texts) 
   }
 }
 
+/// @brief Get the bounding box of a grid
+/// @param id
+/// @param min_pt
+/// @param max_pt
+void HGrid::getGridBox(const int& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& max_pt) {
+  const auto& grid = getGrid(id);
+  min_pt = grid.vmin_;
+  max_pt = grid.vmax_;
+  // std::cout << "Grid id: " << id << ", min: " << min_pt.transpose() << ", max: " <<
+  // max_pt.transpose() << std::endl;
+}
+
+int HGrid::posToGridId(const Eigen::Vector3d& pos) {
+  Eigen::Vector3i idx;
+  grid1_->posToIndex(pos, idx);
+  int id = grid1_->toAddress(idx);
+  return id;
+}
 }  // namespace fast_planner

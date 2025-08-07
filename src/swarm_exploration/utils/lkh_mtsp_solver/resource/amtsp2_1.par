@@ -1,15 +1,7 @@
 SPECIAL
-<<<<<<< HEAD
 PROBLEM_FILE = /home/ubuntu20/ActiveSearcher/Active-Searcher/src/swarm_exploration/utils/lkh_mtsp_solver/resource/amtsp2_1.atsp
-=======
-PROBLEM_FILE = /home/davidh/ActiveSearch_ws/Active-Searcher/src/swarm_exploration/utils/lkh_mtsp_solver/resource/amtsp2_1.atsp
->>>>>>> 17d0ff1cb9f279c1e97f0750fcd0e5041e9c33fd
 SALESMEN = 1
 MTSP_OBJECTIVE = MINSUM
 RUNS = 1
 TRACE_LEVEL = 0
-<<<<<<< HEAD
 TOUR_FILE = /home/ubuntu20/ActiveSearcher/Active-Searcher/src/swarm_exploration/utils/lkh_mtsp_solver/resource/amtsp2_1.tour
-=======
-TOUR_FILE = /home/davidh/ActiveSearch_ws/Active-Searcher/src/swarm_exploration/utils/lkh_mtsp_solver/resource/amtsp2_1.tour
->>>>>>> 17d0ff1cb9f279c1e97f0750fcd0e5041e9c33fd

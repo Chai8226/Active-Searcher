@@ -1,6 +1,7 @@
 #include <exploration_manager/island_finder.h>
 
-void IslandFinder::init(shared_ptr<fast_planner::SDFMap> map, shared_ptr<fast_planner::FrontierFinder> frontier_finder, int drone_id, int drone_num) {
+void IslandFinder::init(shared_ptr<fast_planner::SDFMap> map,
+    shared_ptr<fast_planner::FrontierFinder> frontier_finder, int drone_id, int drone_num) {
   double lowThreshold = 12;
   double highThreshold = 35;
   int apertureSize = 7;
@@ -339,7 +340,7 @@ int IslandFinder::mergeNewIslands(
           min_id = pair.first;
         else
           min_id = min(min_id, pair.first);
-          
+
         const auto& is = pair.second;
         max_x = max(max_x, is.box[1](0));
         max_y = max(max_y, is.box[1](1));
@@ -367,9 +368,9 @@ int IslandFinder::mergeNewIslands(
       }
       island.box.push_back(Eigen::Vector3d(min_x, min_y, min_z));
       island.box.push_back(Eigen::Vector3d(max_x, max_y, max_z));
-      //if(isknown(island.box)) continue;  // 已经被认知过的区域不再处理
+      // if(isknown(island.box)) continue;  // 已经被认知过的区域不再处理
       island.state = MERGED;
-      
+
       island.last_area = island.area;  // 用于判断是否发生变化
       island.area = getArea(island.box[0], island.box[1]);
       island.last_center = island.center;  // 上一次的中心位置
@@ -454,6 +455,51 @@ int IslandFinder::mergeNewIslands(
 //   return this->island_boxs.size();
 // }
 
+/**
+ * @brief 判断两个由最小点和最大点定义的三维区域在XY平面上的投影是否相交，但非完全包含。
+ * * @param region1 第一个区域，由两个Eigen::Vector3d表示（最小点和最大点）。
+ * @param region2 第二个区域，由两个Eigen::Vector3d表示（最小点和最大点）。
+ * @return bool 如果两个区域在XY平面上相交但互不完全包含，则返回true，否则返回false。
+ */
+bool IslandFinder::areBoxsIntersect(
+    const std::vector<Eigen::Vector3d>& region1, const std::vector<Eigen::Vector3d>& region2) {
+
+  // 参数校验
+  if (region1.size() != 2 || region2.size() != 2) {
+    // 或者可以抛出异常
+    std::cerr << "错误：每个区域必须包含恰好两个点（最小点和最大点）。" << std::endl;
+    return false;
+  }
+
+  // 从三维向量中提取二维区域的边界
+  // 为了代码清晰，我们定义了最小和最大点
+  const Eigen::Vector2d min1(region1[0].x(), region1[0].y());
+  const Eigen::Vector2d max1(region1[1].x(), region1[1].y());
+  const Eigen::Vector2d min2(region2[0].x(), region2[0].y());
+  const Eigen::Vector2d max2(region2[1].x(), region2[1].y());
+
+  // 1. 判断两个矩形是否相交
+  bool intersects =
+      (max1.x() > min2.x() && min1.x() < max2.x() && max1.y() > min2.y() && min1.y() < max2.y());
+
+  // 如果不相交，直接返回 false
+  if (!intersects) {
+    return false;
+  }
+
+  // 2. 判断其中一方是否完全包围另一方
+  // 检查 region1 是否包含 region2
+  bool region1ContainsRegion2 = (min1.x() <= min2.x() && min1.y() <= min2.y() &&
+                                 max1.x() >= max2.x() && max1.y() >= max2.y());
+
+  // 检查 region2 是否包含 region1
+  bool region2ContainsRegion1 = (min2.x() <= min1.x() && min2.y() <= min1.y() &&
+                                 max2.x() >= max1.x() && max2.y() >= max1.y());
+
+  // 只有在相交且不互相包含的情况下，才返回 true
+  return intersects && !region1ContainsRegion2 && !region2ContainsRegion1;
+}
+
 /// @brief 判断了解程度
 /// @param island_box
 /// @return
@@ -466,20 +512,20 @@ bool IslandFinder::isknown(Island& island, const vector<vector<Vector3d>>& clust
     ROS_ERROR("WRONG BOX");
     return true;
   }
-  //const auto& frontier_finder = this->frontier_finder_;
-  vector<pair<Eigen::Vector3d,Eigen::Vector3d>> frontier_boxes;
+  // const auto& frontier_finder = this->frontier_finder_;
+  vector<pair<Eigen::Vector3d, Eigen::Vector3d>> frontier_boxes;
   frontier_finder_->getFrontierBoxes(frontier_boxes);
-  int known_num = 0; 
+  int known_num = 0;
   bool have_frontier_inside = false;
   int frontier_thre = 0;
-  for(size_t i = 0; i < frontier_boxes.size(); i++) {
-    vector<Eigen::Vector3d> box = {frontier_boxes[i].first, frontier_boxes[i].second};
-    if(checkAABBIntersection(island.box, box)) {  //如果边界和可疑区域有交集
+  for (size_t i = 0; i < frontier_boxes.size(); i++) {
+    vector<Eigen::Vector3d> box = { frontier_boxes[i].first, frontier_boxes[i].second };
+    if (checkAABBIntersection(island.box, box)) {  // 如果边界和可疑区域有交集
       have_frontier_inside = true;
     }
   }
-  //island.frontier_pt_num = known_num;
-  if(!have_frontier_inside) return true;
+  // island.frontier_pt_num = known_num;
+  if (!have_frontier_inside) return true;
 
   Eigen::Vector3i max_id, min_id;
   this->sdf_map_->posToIndex(island.box[0], min_id);
@@ -546,7 +592,7 @@ bool IslandFinder::isknown(Island& island, const vector<vector<Vector3d>>& clust
 //   //const auto& frontier_finder = this->frontier_finder_;
 //   vector<pair<Eigen::Vector3d,Eigen::Vector3d>> frontier_boxes;
 //   frontier_finder_->getFrontierBoxes(frontier_boxes);
-//   int known_num = 0; 
+//   int known_num = 0;
 //   int frontier_thre = 0;
 //   for(size_t i = 0; i < frontier_boxes.size(); i++) {
 //     vector<Eigen::Vector3d> box = {frontier_boxes[i].first, frontier_boxes[i].second};
@@ -653,7 +699,8 @@ double IslandFinder::getOverlapArea(const Eigen::Vector3d& min1, const Eigen::Ve
       Eigen::Vector3d(intersect_x_max, intersect_y_max, 0));
 }
 
-bool IslandFinder::checkAABBIntersection(const std::vector<Eigen::Vector3d>& box1, const std::vector<Eigen::Vector3d>& box2) {
+bool IslandFinder::checkAABBIntersection(
+    const std::vector<Eigen::Vector3d>& box1, const std::vector<Eigen::Vector3d>& box2) {
   // 从输入中获取每个立方体的最小和最大顶点
   const Eigen::Vector3d& minA = box1[0];
   const Eigen::Vector3d& maxA = box1[1];
@@ -689,7 +736,7 @@ double IslandFinder::getArea(const Eigen::Vector3d& min1, const Eigen::Vector3d&
 void IslandFinder::refineLocalIslands(vector<int>& dropped_ids) {
   dropped_ids.clear();
   vector<vector<Eigen::Vector3d>> clusters;
-  frontier_finder_->getFrontiers(clusters); //缓存
+  frontier_finder_->getFrontiers(clusters);  // 缓存
   for (auto& pair : this->island_boxs[drone_id_ - 1]) {
     if (isknown(pair.second, clusters)) {
       dropped_ids.push_back(pair.first);
