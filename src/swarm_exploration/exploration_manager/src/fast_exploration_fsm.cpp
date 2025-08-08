@@ -64,7 +64,8 @@ void FastExplorationFSM::init(ros::NodeHandle& nh) {
 
   // ifinder_.reset(new IslandFinder());
 
-  // ifinder_->init(expl_manager_->sdf_map_, expl_manager_->frontier_finder_ , getId(), expl_manager_->ep_->drone_num_);
+  // ifinder_->init(expl_manager_->sdf_map_, expl_manager_->frontier_finder_ , getId(),
+  // expl_manager_->ep_->drone_num_);
 
   planner_manager_ = expl_manager_->planner_manager_;
   state_ = EXPL_STATE::INIT;
@@ -145,10 +146,9 @@ void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
 
   if (!completed_island_ids_.empty()) {
     cout << "Complete island: ";
-    for (auto &ci : completed_island_ids_)  cout << ci << ", ";
-    cout << endl;  
+    for (auto& ci : completed_island_ids_) cout << ci << ", ";
+    cout << endl;
   }
-                                          
 
   switch (state_) {
     case INIT: {
@@ -267,9 +267,9 @@ void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
         } else if (res == NO_GRID) {
           if (expl_manager_->ed_->dis_queue.empty()) {
             ROS_WARN("[FSM] coverage done!");
-            switchDroneType(0); // 切换状态
-            //transitState(OPT, "FSM");
-            // need_opt = true;  // 需要重新优化
+            switchDroneType(0);  // 切换状态
+            // transitState(OPT, "FSM");
+            //  need_opt = true;  // 需要重新优化
             visualize(1);
             break;
           }
@@ -342,7 +342,7 @@ void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
               thread vis_thread(&FastExplorationFSM::visualize, this, 1);
               vis_thread.detach();
               transitState(PLAN_TRAJ, "FSM");
-            } 
+            }
           }
 
         } else {
@@ -351,7 +351,8 @@ void FastExplorationFSM::FSMCallback(const ros::TimerEvent& e) {
             completed_island_ids_.insert(current_inspection_island_id_);
             inpsct_planner_type_ = 1;
             need_replan = true;
-          } else if (t_cur > fp_->replan_thresh2_ && expl_manager_->frontier_finder_->isFrontierCovered()) {
+          } else if (t_cur > fp_->replan_thresh2_ &&
+                     expl_manager_->frontier_finder_->isFrontierCovered()) {
             ROS_WARN("Replan: cluster covered=====================================");
             need_replan = true;
             inpsct_planner_type_ = 2;
@@ -790,14 +791,20 @@ void FastExplorationFSM::frontierCallback(const ros::TimerEvent& e) {
       //     disqueue_replan = true;  // 重规划
       //   }
       // }
-      expl_manager_->updateVisitedGrids(fd_->odom_pos_);
       disqueue_replan = updateLocalDisqueue();
+
       Eigen::Vector3d growth_vector;
       int tmp = callLocalIslandUpdater(growth_vector);
-      if(growth_vector.norm() >= 1) {
-        expl_manager_->planDisQueue(fd_->odom_pos_, growth_vector);
-        disqueue_replan = true;  // 重规划
-      } 
+      if (expl_manager_->updateVisitedGrids(fd_->odom_pos_)) {
+        if (expl_manager_->haveIslandInGrid(fd_->odom_pos_)) {
+          expl_manager_->planDisQueue(fd_->odom_pos_, growth_vector);
+          disqueue_replan = true;
+        }
+      }
+      // if(growth_vector.norm() >= 1) {
+      //   expl_manager_->planDisQueue(fd_->odom_pos_, growth_vector);
+      //   disqueue_replan = true;  // 重规划
+      // }
       if (tmp == 1) {
         visualize(3);
         // ROS_WARN("id %d :island! center1(%lf, %lf)", getId(), center1(0), center1(1));
@@ -813,8 +820,9 @@ void FastExplorationFSM::frontierCallback(const ros::TimerEvent& e) {
 
 /// @brief 根据当前位置判断是否应该选择下一个导航点
 /// @return 是否产生了disqueue更新
-bool FastExplorationFSM::updateLocalDisqueue(){
+bool FastExplorationFSM::updateLocalDisqueue() {
   bool update_flag = false;
+  bool is_grid = false;
   auto& dis_queque = expl_manager_->ed_->dis_queue;
   if (!dis_queque.empty()) {
     if ((fd_->odom_pos_ - dis_queque[0].pos).norm() < 0.75) {  // 0.75
@@ -840,18 +848,18 @@ int FastExplorationFSM::callLocalIslandUpdater(Eigen::Vector3d& growth_vector) {
 
   auto& local_buffer = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
   expl_manager_->island_finder_->getAllIslandBoxs(local_buffer);  // 更新本地island库
-  
+
   growth_vector = Eigen::Vector3d(0, 0, 0);
   if (!new_islands.empty()) {
     for (const auto& pair : new_islands) {
-      //local_buffer[pair.first] = pair.second;
+      // local_buffer[pair.first] = pair.second;
       auto tmp = expl_manager_->island_finder_->getGrowthVector(pair.first, fd_->odom_pos_);
-      if(tmp.norm() > 0.02)  // 如果增长向量大于0.02
+      if (tmp.norm() > 0.02)  // 如果增长向量大于0.02
         growth_vector += tmp;
     }
-     //testhigh
-    //cout << "id " << getId() << "find newe island, switch to OPT" << endl;
-    // need_opt = true;  // 需要优化
+    // testhigh
+    // cout << "id " << getId() << "find newe island, switch to OPT" << endl;
+    //  need_opt = true;  // 需要优化
   }
 
   return tmp;
@@ -1092,621 +1100,622 @@ void FastExplorationFSM::droneStateMsgCallback(const exploration_manager::DroneS
 /// @brief 进行优化结束条件检查，符合条件则转移到PLAN_TRAJ状态
 void FastExplorationFSM::callOptEndChecker() {
   if (state_ != OPT) return;  // 没当接受到一个dronestate，检查是否继续opt
-    // ROS_WARN_THROTTLE(1.0, "[MsgCallback] doing opt check. id %d", getId());
+  // ROS_WARN_THROTTLE(1.0, "[MsgCallback] doing opt check. id %d", getId());
 
-    const auto& states = expl_manager_->ed_->swarm_state_;
-    double total = 0;
-    int n = 0;
+  const auto& states = expl_manager_->ed_->swarm_state_;
+  double total = 0;
+  int n = 0;
 
-    for (auto state : states) {
-      if (state.allocation_cost > 0) {
-        total += state.allocation_cost;
-        n++;
-      }
+  for (auto state : states) {
+    if (state.allocation_cost > 0) {
+      total += state.allocation_cost;
+      n++;
     }
-    double avrg = total / n;
-    // double avrg = total;
-    double stdev = 0;
-    // ROS_WARN("[MsgCallback] doing opt check. id %d, avrg = %lf, total = %lf, EXPECT N = %d", getId(), avrg, total, expl_manager_->ep_->drone_num_);
-    if (avrg > 0 && n == expl_manager_->ep_->drone_num_) {
-      // expl_manager_->planDisQueue(fd_->start_pos_);
-      ROS_WARN("opt done: drone %d, avrg = %lf, total num: %d", getId(), avrg, n);
-      transitState(PLAN_TRAJ, "FSM");
+  }
+  double avrg = total / n;
+  // double avrg = total;
+  double stdev = 0;
+  // ROS_WARN("[MsgCallback] doing opt check. id %d, avrg = %lf, total = %lf, EXPECT N = %d",
+  // getId(), avrg, total, expl_manager_->ep_->drone_num_);
+  if (avrg > 0 && n == expl_manager_->ep_->drone_num_) {
+    // expl_manager_->planDisQueue(fd_->start_pos_);
+    ROS_WARN("opt done: drone %d, avrg = %lf, total num: %d", getId(), avrg, n);
+    transitState(PLAN_TRAJ, "FSM");
 
-      //   std::for_each(states.begin(), states.end(), [&](DroneState st) {
-      //     if (st.allocation_cost > 0)
-      //       stdev += (st.allocation_cost - avrg) * (st.allocation_cost - avrg);
-      //     else
-      //       stdev += avrg * avrg;
-      //   });
-      //   double cv = sqrt(stdev) / avrg;  // 考察变异系数
+    //   std::for_each(states.begin(), states.end(), [&](DroneState st) {
+    //     if (st.allocation_cost > 0)
+    //       stdev += (st.allocation_cost - avrg) * (st.allocation_cost - avrg);
+    //     else
+    //       stdev += avrg * avrg;
+    //   });
+    //   double cv = sqrt(stdev) / avrg;  // 考察变异系数
 
-      //   if (/*cv > 0 && cv <= 0.5 && */ total <= allocation_bar * 1.1 && total > 0) {
-      //     ROS_WARN("opt done: drone %d, [opt done] cv = %lf, total = %lf.", getId(), cv,
-      //     total); expl_manager_->planDisQueue(); transitState(PLAN_TRAJ, "FSM");
-      //   } else {
-      //     ROS_WARN_THROTTLE(1.0, "continue opt: cv = %lf, total = %lf, expect: %lf - / under
-      //     %lf -",
-      //         getId(), cv, total, 2.8, allocation_bar * 1.1);
-      //   }
-      // } else {
-      //   ROS_WARN("[WRONG] id: %d, avrg = %lf, total num: %d", getId(), avrg, n);
+    //   if (/*cv > 0 && cv <= 0.5 && */ total <= allocation_bar * 1.1 && total > 0) {
+    //     ROS_WARN("opt done: drone %d, [opt done] cv = %lf, total = %lf.", getId(), cv,
+    //     total); expl_manager_->planDisQueue(); transitState(PLAN_TRAJ, "FSM");
+    //   } else {
+    //     ROS_WARN_THROTTLE(1.0, "continue opt: cv = %lf, total = %lf, expect: %lf - / under
+    //     %lf -",
+    //         getId(), cv, total, 2.8, allocation_bar * 1.1);
+    //   }
+    // } else {
+    //   ROS_WARN("[WRONG] id: %d, avrg = %lf, total num: %d", getId(), avrg, n);
   }
 }
 
-  /**
-   * @brief 每隔一段时间基于已有信息进行pairwise规划
-   */
-  void FastExplorationFSM::optTimerCallback(const ros::TimerEvent& e) {
-    if (state_ != OPT) return;
+/**
+ * @brief 每隔一段时间基于已有信息进行pairwise规划
+ */
+void FastExplorationFSM::optTimerCallback(const ros::TimerEvent& e) {
+  if (state_ != OPT) return;
 
-    // Select nearby drone not interacting with recently
-    auto& states = expl_manager_->ed_->swarm_state_;
-    auto& state1 = states[getId() - 1];  // 本无人机的state
-    // bool urgent = (state1.grid_ids_.size() <= 1 /* && !state1.grid_ids_.empty() */);
-    // bool urgent = state1.grid_ids_.empty();
-    auto tn = ros::Time::now().toSec();
+  // Select nearby drone not interacting with recently
+  auto& states = expl_manager_->ed_->swarm_state_;
+  auto& state1 = states[getId() - 1];  // 本无人机的state
+  // bool urgent = (state1.grid_ids_.size() <= 1 /* && !state1.grid_ids_.empty() */);
+  // bool urgent = state1.grid_ids_.empty();
+  auto tn = ros::Time::now().toSec();
 
-    // Avoid frequent attempt
-    if (tn - state1.recent_attempt_time_ < fp_->attempt_interval_) return;
+  // Avoid frequent attempt
+  if (tn - state1.recent_attempt_time_ < fp_->attempt_interval_) return;
 
-    int select_id = -1;
-    double max_interval = -1.0;
+  int select_id = -1;
+  double max_interval = -1.0;
 
-    // 找到一个符合通信要求的对象，接下来的任务分配与它进行
-    for (int i = 0; i < states.size(); ++i) {
-      if (i + 1 <= getId()) continue;
+  // 找到一个符合通信要求的对象，接下来的任务分配与它进行
+  for (int i = 0; i < states.size(); ++i) {
+    if (i + 1 <= getId()) continue;
 
-      // Check if have communication recently
-      // or the drone just experience another opt
-      // or the drone is interacted with recently /* !urgent &&  */
-      // or the candidate drone dominates enough grids
-      if (tn - states[i].stamp_ > 0.2) continue;
-      if (tn - states[i].recent_attempt_time_ < fp_->attempt_interval_) continue;
-      if (tn - states[i].recent_interact_time_ < fp_->pair_opt_interval_) continue;
-      if (states[i].grid_ids_.size() + state1.grid_ids_.size() == 0) {
-        ROS_WARN("%d : %d, both drone size 0, continue, %d, %d", getId(), i + 1,
-            state1.grid_ids_.size(), states[i].grid_ids_.size());
-        continue;
-      }
-
-      double interval = tn - states[i].recent_interact_time_;
-      if (interval <= max_interval) continue;
-      select_id = i + 1;
-      max_interval = interval;
-    }
-    if (select_id == -1) {
-      ROS_WARN("id %d: no one matches", getId());
-      return;
+    // Check if have communication recently
+    // or the drone just experience another opt
+    // or the drone is interacted with recently /* !urgent &&  */
+    // or the candidate drone dominates enough grids
+    if (tn - states[i].stamp_ > 0.2) continue;
+    if (tn - states[i].recent_attempt_time_ < fp_->attempt_interval_) continue;
+    if (tn - states[i].recent_interact_time_ < fp_->pair_opt_interval_) continue;
+    if (states[i].grid_ids_.size() + state1.grid_ids_.size() == 0) {
+      ROS_WARN("%d : %d, both drone size 0, continue, %d, %d", getId(), i + 1,
+          state1.grid_ids_.size(), states[i].grid_ids_.size());
+      continue;
     }
 
-    std::cout << "\nSelect: " << select_id << std::endl;
-    ROS_WARN("Pair opt %d & %d", getId(), select_id);
-
-    // Do pairwise optimization with selected drone, allocate the union of their domiance grids
-    unordered_map<int, char> opt_ids_map;
-    auto& state2 = states[select_id - 1];  // pairwise interaction对象的state
-    for (auto id : state1.grid_ids_) opt_ids_map[id] = 1;
-    for (auto id : state2.grid_ids_) opt_ids_map[id] = 1;  // 记录加入优化的grid,排除重复
-
-    vector<int> visited_ids;
-    expl_manager_->getVisitedGrids(visited_ids);  // testhigh 删除所有已经visited过的
-    for (auto visited : visited_ids) {
-      if (opt_ids_map.find(visited) != opt_ids_map.end()) {
-        opt_ids_map.erase(visited);
-      }
-    }
-
-    vector<int> opt_ids;
-    for (auto pair : opt_ids_map) opt_ids.push_back(pair.first);
-
-    std::cout << "Pair Opt id: ";
-    for (auto id : opt_ids) std::cout << id << ", ";
-    std::cout << "" << std::endl;
-
-    // Find missed grids to reallocated them
-    // vector<int> actives, missed;
-    // expl_manager_->hgrid_->getActiveGrids(actives);
-    // findUnallocated(actives, missed);
-    // std::cout << "Missed: ";
-    // for (auto id : missed) std::cout << id << ", ";
-    // std::cout << "" << std::endl;
-    // opt_ids.insert(opt_ids.end(), missed.begin(), missed.end());
-
-    // Do partition of the grid
-    vector<Eigen::Vector3d> positions = { state1.pos_, state2.pos_ };
-    vector<Eigen::Vector3d> velocities = { Eigen::Vector3d(0, 0, 0), Eigen::Vector3d(0, 0, 0) };
-    vector<int> first_ids1, second_ids1, first_ids2, second_ids2;
-    if (state_ != WAIT_TRIGGER) {  // 连续性分析准备。得到无人机1、2的前两个粗grid
-      expl_manager_->hgrid_->getConsistentGrid(
-          state1.grid_ids_, state1.grid_ids_, first_ids1, second_ids1);
-      expl_manager_->hgrid_->getConsistentGrid(
-          state2.grid_ids_, state2.grid_ids_, first_ids2, second_ids2);
-    }
-
-    auto t1 = ros::Time::now();
-
-    vector<int> ego_ids, other_ids;
-    expl_manager_->allocateGrids(positions, velocities, { first_ids1, first_ids2 },
-        { second_ids1, second_ids2 }, opt_ids, ego_ids, other_ids);
-
-    double alloc_time = (ros::Time::now() - t1).toSec();
-
-    std::cout << "Ego1  : ";
-    for (auto id : state1.grid_ids_) std::cout << id << ", ";
-    std::cout << "\nOther1: ";
-    for (auto id : state2.grid_ids_) std::cout << id << ", ";
-    std::cout << "\nEgo2  : ";
-    for (auto id : ego_ids) std::cout << id << ", ";
-    std::cout << "\nOther2: ";
-    for (auto id : other_ids) std::cout << id << ", ";
-    std::cout << "" << std::endl;
-
-    // Check results
-    double prev_app1 = expl_manager_->computeGridPathCost(state1.pos_, state1.grid_ids_, first_ids1,
-        { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
-    double prev_app2 = expl_manager_->computeGridPathCost(state2.pos_, state2.grid_ids_, first_ids2,
-        { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
-    std::cout << "prev cost: " << prev_app1 << ", " << prev_app2 << ", " << prev_app1 + prev_app2
-              << std::endl;  // 分配之前的cost
-    double cur_app1 = expl_manager_->computeGridPathCost(state1.pos_, ego_ids, first_ids1,
-        { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
-    double cur_app2 = expl_manager_->computeGridPathCost(state2.pos_, other_ids, first_ids2,
-        { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
-    std::cout << "cur cost : " << cur_app1 << ", " << cur_app2 << ", " << cur_app1 + cur_app2
-              << std::endl;  // 分配过后的cost
-    // if (cur_app1 + cur_app2 > prev_app1 + prev_app2 + 0.1) {
-    //   ROS_ERROR("Larger cost after reallocation");
-    //   if (state_ != WAIT_TRIGGER) {
-    //     return;
-    //   }
-    // }
-
-    if (!state1.grid_ids_.empty() && !ego_ids.empty() &&
-        !expl_manager_->hgrid_->isConsistent(state1.grid_ids_[0], ego_ids[0])) {
-      ROS_ERROR("Path 1 inconsistent");  // 分配后的路径和原本路径起始grid不连续
-    }
-    if (!state2.grid_ids_.empty() && !other_ids.empty() &&
-        !expl_manager_->hgrid_->isConsistent(state2.grid_ids_[0], other_ids[0])) {
-      ROS_ERROR("Path 2 inconsistent");
-    }
-
-    // Update ego and other dominace grids
-    auto last_ids2 = state2.grid_ids_;
-
-    // Send the result to selected drone and wait for confirmation
-    exploration_manager::PairOpt opt;
-    opt.from_drone_id = getId();
-    opt.to_drone_id = select_id;
-    // opt.msg_type = 1;
-    opt.stamp = tn;
-    for (auto id : ego_ids) opt.ego_ids.push_back(id);
-    for (auto id : other_ids) opt.other_ids.push_back(id);
-
-    opt.to_allocation_cost = cur_app2;  // 将计算出的cost同步到对方
-    opt.from_allocation_cost = cur_app1;
-
-    for (int i = 0; i < fp_->repeat_send_num_; ++i) opt_pub_.publish(opt);
-
-    // ROS_WARN("Drone %d send opt request to %d, pair opt t: %lf, allocate t: %lf, cur_app1: %lf,
-    // cur_app2: %lf, cv: %lf", getId(), select_id, ros::Time::now().toSec() - tn, alloc_time,
-    // cur_app1, cur_app2, cv);
-    ROS_WARN("Drone %d send opt request to %d, pair opt t: %lf, allocate t: %lf, cur_app1: %lf, "
-             "cur_app2: %lf",
-        getId(), select_id, ros::Time::now().toSec() - tn, alloc_time, cur_app1, cur_app2);
-
-    // Reserve the result and wait...
-    auto ed = expl_manager_->ed_;  // 收尾工作
-    ed->ego_ids_ = ego_ids;
-    ed->other_ids_ = other_ids;
-    ed->pair_opt_stamp_ = opt.stamp;
-    ed->wait_response_ = true;
-    ed->allocation_cost = cur_app1;
-    ed->other_allocation_cost = cur_app2;
-    state1.recent_attempt_time_ = tn;
+    double interval = tn - states[i].recent_interact_time_;
+    if (interval <= max_interval) continue;
+    select_id = i + 1;
+    max_interval = interval;
+  }
+  if (select_id == -1) {
+    ROS_WARN("id %d: no one matches", getId());
+    return;
   }
 
-  /**
-   * @brief 找到actives中swarm data未分配的grid
-   * @param actives
-   * @param missed 存放得到的未分配点
-   */
-  void FastExplorationFSM::findUnallocated(const vector<int>& actives, vector<int>& missed) {
-    // Create map of all active
-    unordered_map<int, char> active_map;
-    for (auto ativ : actives) {
-      active_map[ativ] = 1;
-    }
+  std::cout << "\nSelect: " << select_id << std::endl;
+  ROS_WARN("Pair opt %d & %d", getId(), select_id);
 
-    // Remove allocated ones
-    for (auto state : expl_manager_->ed_->swarm_state_) {
-      for (auto id : state.grid_ids_) {
-        if (active_map.find(id) != active_map.end()) {
-          active_map.erase(id);
-        } else {
-          // ROS_ERROR("Inactive grid %d is allocated.", id);
-        }
-      }
-    }
+  // Do pairwise optimization with selected drone, allocate the union of their domiance grids
+  unordered_map<int, char> opt_ids_map;
+  auto& state2 = states[select_id - 1];  // pairwise interaction对象的state
+  for (auto id : state1.grid_ids_) opt_ids_map[id] = 1;
+  for (auto id : state2.grid_ids_) opt_ids_map[id] = 1;  // 记录加入优化的grid,排除重复
 
-    missed.clear();
-    for (auto p : active_map) {
-      missed.push_back(p.first);
+  vector<int> visited_ids;
+  expl_manager_->getVisitedGrids(visited_ids);  // testhigh 删除所有已经visited过的
+  for (auto visited : visited_ids) {
+    if (opt_ids_map.find(visited) != opt_ids_map.end()) {
+      opt_ids_map.erase(visited);
     }
   }
 
-  /**
-   * @brief 接受到opt之后，同步信息，发送opt
-   * ack信息。接受到opt消息会将自己强制转为opt状态，来实现一个全局的opt状态同步
-   */
-  void FastExplorationFSM::optMsgCallback(const exploration_manager::PairOptConstPtr& msg) {
-    if (msg->from_drone_id == getId() || msg->to_drone_id != getId()) return;
+  vector<int> opt_ids;
+  for (auto pair : opt_ids_map) opt_ids.push_back(pair.first);
 
-    // Check stamp to avoid unordered/repeated msg
-    if (msg->stamp <= expl_manager_->ed_->pair_opt_stamps_[msg->from_drone_id - 1] + 1e-4) return;
-    expl_manager_->ed_->pair_opt_stamps_[msg->from_drone_id - 1] = msg->stamp;
+  std::cout << "Pair Opt id: ";
+  for (auto id : opt_ids) std::cout << id << ", ";
+  std::cout << "" << std::endl;
 
-    auto& state1 = expl_manager_->ed_->swarm_state_[msg->from_drone_id - 1];  // 对面
-    auto& state2 = expl_manager_->ed_->swarm_state_[getId() - 1];             // 自己
+  // Find missed grids to reallocated them
+  // vector<int> actives, missed;
+  // expl_manager_->hgrid_->getActiveGrids(actives);
+  // findUnallocated(actives, missed);
+  // std::cout << "Missed: ";
+  // for (auto id : missed) std::cout << id << ", ";
+  // std::cout << "" << std::endl;
+  // opt_ids.insert(opt_ids.end(), missed.begin(), missed.end());
 
-    // auto tn = ros::Time::now().toSec();
-    exploration_manager::PairOptResponse response;
-    response.from_drone_id = msg->to_drone_id;
-    response.to_drone_id = msg->from_drone_id;
-    response.stamp = msg->stamp;  // reply with the same stamp for verificaiton
-
-    if (msg->stamp - state2.recent_attempt_time_ < fp_->attempt_interval_) {
-      // Just made another pair opt attempt, should reject this attempt to avoid frequent changes
-      ROS_WARN("Reject frequent attempt");
-      response.status = 2;
-    } else {
-      // No opt attempt recently, and the grid info between drones are consistent, the pair opt
-      // request can be accepted
-      response.status = 1;
-
-      // Update from the opt result
-      state1.grid_ids_.clear();
-      state2.grid_ids_.clear();
-      for (auto id : msg->ego_ids) state1.grid_ids_.push_back(id);
-      for (auto id : msg->other_ids) state2.grid_ids_.push_back(id);
-      expl_manager_->planDisQueue(fd_->odom_pos_, Eigen::Vector3d(0, 0, 0));
-      std::cout << "[optMsgCallback]" << expl_manager_->ed_->dis_queue.size() << "grid in disqueue"
-                << std::endl;
-
-      disqueue_replan = true;
-      need_opt = true;  // 也需要重新优化
-
-      state1.allocation_cost = msg->from_allocation_cost;
-      state2.allocation_cost = msg->to_allocation_cost;
-
-      state1.recent_interact_time_ = msg->stamp;
-      state2.recent_attempt_time_ = ros::Time::now().toSec();
-      expl_manager_->ed_->reallocated_ = true;
-
-      if (state_ == IDLE && !state2.grid_ids_.empty()) {
-        transitState(PLAN_TRAJ, "optMsgCallback");
-        ROS_WARN("Restart after opt!");
-      }
-
-      // if (!check_consistency(tmp1, tmp2)) {
-      //   response.status = 2;
-      //   ROS_WARN("Inconsistent grid info, reject pair opt");
-      // } else {
-      // }
-    }
-    for (int i = 0; i < fp_->repeat_send_num_; ++i) opt_res_pub_.publish(response);
+  // Do partition of the grid
+  vector<Eigen::Vector3d> positions = { state1.pos_, state2.pos_ };
+  vector<Eigen::Vector3d> velocities = { Eigen::Vector3d(0, 0, 0), Eigen::Vector3d(0, 0, 0) };
+  vector<int> first_ids1, second_ids1, first_ids2, second_ids2;
+  if (state_ != WAIT_TRIGGER) {  // 连续性分析准备。得到无人机1、2的前两个粗grid
+    expl_manager_->hgrid_->getConsistentGrid(
+        state1.grid_ids_, state1.grid_ids_, first_ids1, second_ids1);
+    expl_manager_->hgrid_->getConsistentGrid(
+        state2.grid_ids_, state2.grid_ids_, first_ids2, second_ids2);
   }
 
-  /**
-   * @brief 接受到opt ack的callback函数
-   */
-  void FastExplorationFSM::optResMsgCallback(const exploration_manager::PairOptResponseConstPtr& msg) {
-    if (msg->from_drone_id == getId() || msg->to_drone_id != getId()) return;
+  auto t1 = ros::Time::now();
 
-    // Check stamp to avoid unordered/repeated msg
-    if (msg->stamp <= expl_manager_->ed_->pair_opt_res_stamps_[msg->from_drone_id - 1] + 1e-4)
-      return;
-    expl_manager_->ed_->pair_opt_res_stamps_[msg->from_drone_id - 1] = msg->stamp;
+  vector<int> ego_ids, other_ids;
+  expl_manager_->allocateGrids(positions, velocities, { first_ids1, first_ids2 },
+      { second_ids1, second_ids2 }, opt_ids, ego_ids, other_ids);
 
-    auto ed = expl_manager_->ed_;
-    // Verify the consistency of pair opt via time stamp
-    if (!ed->wait_response_ || fabs(ed->pair_opt_stamp_ - msg->stamp) > 1e-5) return;
+  double alloc_time = (ros::Time::now() - t1).toSec();
 
-    ed->wait_response_ = false;
-    ROS_WARN("get response %d", int(msg->status));
+  std::cout << "Ego1  : ";
+  for (auto id : state1.grid_ids_) std::cout << id << ", ";
+  std::cout << "\nOther1: ";
+  for (auto id : state2.grid_ids_) std::cout << id << ", ";
+  std::cout << "\nEgo2  : ";
+  for (auto id : ego_ids) std::cout << id << ", ";
+  std::cout << "\nOther2: ";
+  for (auto id : other_ids) std::cout << id << ", ";
+  std::cout << "" << std::endl;
 
-    if (msg->status != 1) return;  // Receive 1 for valid opt
+  // Check results
+  double prev_app1 = expl_manager_->computeGridPathCost(state1.pos_, state1.grid_ids_, first_ids1,
+      { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
+  double prev_app2 = expl_manager_->computeGridPathCost(state2.pos_, state2.grid_ids_, first_ids2,
+      { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
+  std::cout << "prev cost: " << prev_app1 << ", " << prev_app2 << ", " << prev_app1 + prev_app2
+            << std::endl;  // 分配之前的cost
+  double cur_app1 = expl_manager_->computeGridPathCost(state1.pos_, ego_ids, first_ids1,
+      { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
+  double cur_app2 = expl_manager_->computeGridPathCost(state2.pos_, other_ids, first_ids2,
+      { first_ids1, first_ids2 }, { second_ids1, second_ids2 }, true);
+  std::cout << "cur cost : " << cur_app1 << ", " << cur_app2 << ", " << cur_app1 + cur_app2
+            << std::endl;  // 分配过后的cost
+  // if (cur_app1 + cur_app2 > prev_app1 + prev_app2 + 0.1) {
+  //   ROS_ERROR("Larger cost after reallocation");
+  //   if (state_ != WAIT_TRIGGER) {
+  //     return;
+  //   }
+  // }
 
-    auto& state1 = ed->swarm_state_[getId() - 1];
-    auto& state2 = ed->swarm_state_[msg->from_drone_id - 1];
-    state1.grid_ids_ = ed->ego_ids_;
-    state2.grid_ids_ = ed->other_ids_;
+  if (!state1.grid_ids_.empty() && !ego_ids.empty() &&
+      !expl_manager_->hgrid_->isConsistent(state1.grid_ids_[0], ego_ids[0])) {
+    ROS_ERROR("Path 1 inconsistent");  // 分配后的路径和原本路径起始grid不连续
+  }
+  if (!state2.grid_ids_.empty() && !other_ids.empty() &&
+      !expl_manager_->hgrid_->isConsistent(state2.grid_ids_[0], other_ids[0])) {
+    ROS_ERROR("Path 2 inconsistent");
+  }
+
+  // Update ego and other dominace grids
+  auto last_ids2 = state2.grid_ids_;
+
+  // Send the result to selected drone and wait for confirmation
+  exploration_manager::PairOpt opt;
+  opt.from_drone_id = getId();
+  opt.to_drone_id = select_id;
+  // opt.msg_type = 1;
+  opt.stamp = tn;
+  for (auto id : ego_ids) opt.ego_ids.push_back(id);
+  for (auto id : other_ids) opt.other_ids.push_back(id);
+
+  opt.to_allocation_cost = cur_app2;  // 将计算出的cost同步到对方
+  opt.from_allocation_cost = cur_app1;
+
+  for (int i = 0; i < fp_->repeat_send_num_; ++i) opt_pub_.publish(opt);
+
+  // ROS_WARN("Drone %d send opt request to %d, pair opt t: %lf, allocate t: %lf, cur_app1: %lf,
+  // cur_app2: %lf, cv: %lf", getId(), select_id, ros::Time::now().toSec() - tn, alloc_time,
+  // cur_app1, cur_app2, cv);
+  ROS_WARN("Drone %d send opt request to %d, pair opt t: %lf, allocate t: %lf, cur_app1: %lf, "
+           "cur_app2: %lf",
+      getId(), select_id, ros::Time::now().toSec() - tn, alloc_time, cur_app1, cur_app2);
+
+  // Reserve the result and wait...
+  auto ed = expl_manager_->ed_;  // 收尾工作
+  ed->ego_ids_ = ego_ids;
+  ed->other_ids_ = other_ids;
+  ed->pair_opt_stamp_ = opt.stamp;
+  ed->wait_response_ = true;
+  ed->allocation_cost = cur_app1;
+  ed->other_allocation_cost = cur_app2;
+  state1.recent_attempt_time_ = tn;
+}
+
+/**
+ * @brief 找到actives中swarm data未分配的grid
+ * @param actives
+ * @param missed 存放得到的未分配点
+ */
+void FastExplorationFSM::findUnallocated(const vector<int>& actives, vector<int>& missed) {
+  // Create map of all active
+  unordered_map<int, char> active_map;
+  for (auto ativ : actives) {
+    active_map[ativ] = 1;
+  }
+
+  // Remove allocated ones
+  for (auto state : expl_manager_->ed_->swarm_state_) {
+    for (auto id : state.grid_ids_) {
+      if (active_map.find(id) != active_map.end()) {
+        active_map.erase(id);
+      } else {
+        // ROS_ERROR("Inactive grid %d is allocated.", id);
+      }
+    }
+  }
+
+  missed.clear();
+  for (auto p : active_map) {
+    missed.push_back(p.first);
+  }
+}
+
+/**
+ * @brief 接受到opt之后，同步信息，发送opt
+ * ack信息。接受到opt消息会将自己强制转为opt状态，来实现一个全局的opt状态同步
+ */
+void FastExplorationFSM::optMsgCallback(const exploration_manager::PairOptConstPtr& msg) {
+  if (msg->from_drone_id == getId() || msg->to_drone_id != getId()) return;
+
+  // Check stamp to avoid unordered/repeated msg
+  if (msg->stamp <= expl_manager_->ed_->pair_opt_stamps_[msg->from_drone_id - 1] + 1e-4) return;
+  expl_manager_->ed_->pair_opt_stamps_[msg->from_drone_id - 1] = msg->stamp;
+
+  auto& state1 = expl_manager_->ed_->swarm_state_[msg->from_drone_id - 1];  // 对面
+  auto& state2 = expl_manager_->ed_->swarm_state_[getId() - 1];             // 自己
+
+  // auto tn = ros::Time::now().toSec();
+  exploration_manager::PairOptResponse response;
+  response.from_drone_id = msg->to_drone_id;
+  response.to_drone_id = msg->from_drone_id;
+  response.stamp = msg->stamp;  // reply with the same stamp for verificaiton
+
+  if (msg->stamp - state2.recent_attempt_time_ < fp_->attempt_interval_) {
+    // Just made another pair opt attempt, should reject this attempt to avoid frequent changes
+    ROS_WARN("Reject frequent attempt");
+    response.status = 2;
+  } else {
+    // No opt attempt recently, and the grid info between drones are consistent, the pair opt
+    // request can be accepted
+    response.status = 1;
+
+    // Update from the opt result
+    state1.grid_ids_.clear();
+    state2.grid_ids_.clear();
+    for (auto id : msg->ego_ids) state1.grid_ids_.push_back(id);
+    for (auto id : msg->other_ids) state2.grid_ids_.push_back(id);
     expl_manager_->planDisQueue(fd_->odom_pos_, Eigen::Vector3d(0, 0, 0));
+    std::cout << "[optMsgCallback]" << expl_manager_->ed_->dis_queue.size() << "grid in disqueue"
+              << std::endl;
+
     disqueue_replan = true;
+    need_opt = true;  // 也需要重新优化
 
-    // 更新自己的allocation_cost_ 数据
-    state1.allocation_cost = ed->allocation_cost;
-    state2.allocation_cost = ed->other_allocation_cost;
-    state2.recent_interact_time_ = ros::Time::now().toSec();
-    ed->reallocated_ = true;
+    state1.allocation_cost = msg->from_allocation_cost;
+    state2.allocation_cost = msg->to_allocation_cost;
 
-    if (state_ == IDLE && !state1.grid_ids_.empty()) {
-      transitState(PLAN_TRAJ, "optResMsgCallback");
+    state1.recent_interact_time_ = msg->stamp;
+    state2.recent_attempt_time_ = ros::Time::now().toSec();
+    expl_manager_->ed_->reallocated_ = true;
+
+    if (state_ == IDLE && !state2.grid_ids_.empty()) {
+      transitState(PLAN_TRAJ, "optMsgCallback");
       ROS_WARN("Restart after opt!");
     }
-  }
 
-  void FastExplorationFSM::swarmTrajCallback(const bspline::BsplineConstPtr& msg) {
-    // Get newest trajs from other drones, for inter-drone collision avoidance
-    auto& sdat = planner_manager_->swarm_traj_data_;
-
-    // Ignore self trajectory
-    if (msg->drone_id == sdat.drone_id_) return;
-
-    // Ignore outdated trajectory
-    if (sdat.receive_flags_[msg->drone_id - 1] == true &&
-        msg->start_time.toSec() <= sdat.swarm_trajs_[msg->drone_id - 1].start_time_ + 1e-3)
-      return;
-
-    // Convert the msg to B-spline
-    Eigen::MatrixXd pos_pts(msg->pos_pts.size(), 3);
-    Eigen::VectorXd knots(msg->knots.size());
-    for (int i = 0; i < msg->knots.size(); ++i) knots(i) = msg->knots[i];
-
-    for (int i = 0; i < msg->pos_pts.size(); ++i) {
-      pos_pts(i, 0) = msg->pos_pts[i].x;
-      pos_pts(i, 1) = msg->pos_pts[i].y;
-      pos_pts(i, 2) = msg->pos_pts[i].z;
-    }
-
-    // // Transform of drone's basecoor, optional step (skip if use swarm_pilot)
-    // Eigen::Vector4d tf;
-    // planner_manager_->edt_environment_->sdf_map_->getBaseCoor(msg->drone_id, tf);
-    // double yaw = tf[3];
-    // Eigen::Matrix3d rot;
-    // rot << cos(yaw), -sin(yaw), 0, sin(yaw), cos(yaw), 0, 0, 0, 1;
-    // Eigen::Vector3d trans = tf.head<3>();
-    // for (int i = 0; i < pos_pts.rows(); ++i) {
-    //   Eigen::Vector3d tmp = pos_pts.row(i);
-    //   tmp = rot * tmp + trans;
-    //   pos_pts.row(i) = tmp;
+    // if (!check_consistency(tmp1, tmp2)) {
+    //   response.status = 2;
+    //   ROS_WARN("Inconsistent grid info, reject pair opt");
+    // } else {
     // }
+  }
+  for (int i = 0; i < fp_->repeat_send_num_; ++i) opt_res_pub_.publish(response);
+}
 
-    sdat.swarm_trajs_[msg->drone_id - 1].setUniformBspline(pos_pts, msg->order, 0.1);
-    sdat.swarm_trajs_[msg->drone_id - 1].setKnot(knots);
-    sdat.swarm_trajs_[msg->drone_id - 1].start_time_ = msg->start_time.toSec();
-    sdat.receive_flags_[msg->drone_id - 1] = true;
+/**
+ * @brief 接受到opt ack的callback函数
+ */
+void FastExplorationFSM::optResMsgCallback(
+    const exploration_manager::PairOptResponseConstPtr& msg) {
+  if (msg->from_drone_id == getId() || msg->to_drone_id != getId()) return;
 
-    if (state_ == EXEC_TRAJ) {
-      // Check collision with received trajectory
-      if (!planner_manager_->checkSwarmCollision(msg->drone_id)) {
-        ROS_ERROR("Drone %d collide with drone %d.", sdat.drone_id_, msg->drone_id);
-        fd_->avoid_collision_ = true;
-        transitState(PLAN_TRAJ, "swarmTrajCallback");
-      }
+  // Check stamp to avoid unordered/repeated msg
+  if (msg->stamp <= expl_manager_->ed_->pair_opt_res_stamps_[msg->from_drone_id - 1] + 1e-4) return;
+  expl_manager_->ed_->pair_opt_res_stamps_[msg->from_drone_id - 1] = msg->stamp;
+
+  auto ed = expl_manager_->ed_;
+  // Verify the consistency of pair opt via time stamp
+  if (!ed->wait_response_ || fabs(ed->pair_opt_stamp_ - msg->stamp) > 1e-5) return;
+
+  ed->wait_response_ = false;
+  ROS_WARN("get response %d", int(msg->status));
+
+  if (msg->status != 1) return;  // Receive 1 for valid opt
+
+  auto& state1 = ed->swarm_state_[getId() - 1];
+  auto& state2 = ed->swarm_state_[msg->from_drone_id - 1];
+  state1.grid_ids_ = ed->ego_ids_;
+  state2.grid_ids_ = ed->other_ids_;
+  expl_manager_->planDisQueue(fd_->odom_pos_, Eigen::Vector3d(0, 0, 0));
+  disqueue_replan = true;
+
+  // 更新自己的allocation_cost_ 数据
+  state1.allocation_cost = ed->allocation_cost;
+  state2.allocation_cost = ed->other_allocation_cost;
+  state2.recent_interact_time_ = ros::Time::now().toSec();
+  ed->reallocated_ = true;
+
+  if (state_ == IDLE && !state1.grid_ids_.empty()) {
+    transitState(PLAN_TRAJ, "optResMsgCallback");
+    ROS_WARN("Restart after opt!");
+  }
+}
+
+void FastExplorationFSM::swarmTrajCallback(const bspline::BsplineConstPtr& msg) {
+  // Get newest trajs from other drones, for inter-drone collision avoidance
+  auto& sdat = planner_manager_->swarm_traj_data_;
+
+  // Ignore self trajectory
+  if (msg->drone_id == sdat.drone_id_) return;
+
+  // Ignore outdated trajectory
+  if (sdat.receive_flags_[msg->drone_id - 1] == true &&
+      msg->start_time.toSec() <= sdat.swarm_trajs_[msg->drone_id - 1].start_time_ + 1e-3)
+    return;
+
+  // Convert the msg to B-spline
+  Eigen::MatrixXd pos_pts(msg->pos_pts.size(), 3);
+  Eigen::VectorXd knots(msg->knots.size());
+  for (int i = 0; i < msg->knots.size(); ++i) knots(i) = msg->knots[i];
+
+  for (int i = 0; i < msg->pos_pts.size(); ++i) {
+    pos_pts(i, 0) = msg->pos_pts[i].x;
+    pos_pts(i, 1) = msg->pos_pts[i].y;
+    pos_pts(i, 2) = msg->pos_pts[i].z;
+  }
+
+  // // Transform of drone's basecoor, optional step (skip if use swarm_pilot)
+  // Eigen::Vector4d tf;
+  // planner_manager_->edt_environment_->sdf_map_->getBaseCoor(msg->drone_id, tf);
+  // double yaw = tf[3];
+  // Eigen::Matrix3d rot;
+  // rot << cos(yaw), -sin(yaw), 0, sin(yaw), cos(yaw), 0, 0, 0, 1;
+  // Eigen::Vector3d trans = tf.head<3>();
+  // for (int i = 0; i < pos_pts.rows(); ++i) {
+  //   Eigen::Vector3d tmp = pos_pts.row(i);
+  //   tmp = rot * tmp + trans;
+  //   pos_pts.row(i) = tmp;
+  // }
+
+  sdat.swarm_trajs_[msg->drone_id - 1].setUniformBspline(pos_pts, msg->order, 0.1);
+  sdat.swarm_trajs_[msg->drone_id - 1].setKnot(knots);
+  sdat.swarm_trajs_[msg->drone_id - 1].start_time_ = msg->start_time.toSec();
+  sdat.receive_flags_[msg->drone_id - 1] = true;
+
+  if (state_ == EXEC_TRAJ) {
+    // Check collision with received trajectory
+    if (!planner_manager_->checkSwarmCollision(msg->drone_id)) {
+      ROS_ERROR("Drone %d collide with drone %d.", sdat.drone_id_, msg->drone_id);
+      fd_->avoid_collision_ = true;
+      transitState(PLAN_TRAJ, "swarmTrajCallback");
+    }
+  }
+}
+
+void FastExplorationFSM::swarmTrajTimerCallback(const ros::TimerEvent& e) {
+  // Broadcast newest traj of this drone to others
+  if (state_ == EXEC_TRAJ) {
+    swarm_traj_pub_.publish(fd_->newest_traj_);
+
+  } else if (state_ == WAIT_TRIGGER) {
+    // Publish a virtual traj at current pose, to avoid collision
+    bspline::Bspline bspline;
+    bspline.order = planner_manager_->pp_.bspline_degree_;
+    bspline.start_time = ros::Time::now();
+    bspline.traj_id = planner_manager_->local_data_.traj_id_;
+
+    Eigen::MatrixXd pos_pts(4, 3);
+    for (int i = 0; i < 4; ++i) pos_pts.row(i) = fd_->odom_pos_.transpose();
+
+    for (int i = 0; i < pos_pts.rows(); ++i) {
+      geometry_msgs::Point pt;
+      pt.x = pos_pts(i, 0);
+      pt.y = pos_pts(i, 1);
+      pt.z = pos_pts(i, 2);
+      bspline.pos_pts.push_back(pt);
+    }
+
+    NonUniformBspline tmp(pos_pts, planner_manager_->pp_.bspline_degree_, 1.0);
+    Eigen::VectorXd knots = tmp.getKnot();
+    for (int i = 0; i < knots.rows(); ++i) {
+      bspline.knots.push_back(knots(i));
+    }
+    bspline.drone_id = expl_manager_->ep_->drone_id_;
+    swarm_traj_pub_.publish(bspline);
+  }
+}
+
+// ============================== inspect =====================================
+/**
+ * @brief 计算全局最优的inspection island
+ */
+int FastExplorationFSM::callInspectPlanner() {
+  ROS_INFO("[INSP] Executing inspection planning.");
+
+  ros::Time time_r = ros::Time::now() + ros::Duration(fp_->replan_time_);
+
+  auto& island_buffer_ = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
+  if (island_buffer_.empty()) {
+    ROS_WARN("[Planner] No islands available for inspection planning.");
+    return INSP_FAIL;
+  }
+
+  int res = INSP_FAIL;
+  if (inpsct_planner_type_ == 1) {  // --- 全局规划 ---
+    int best_target_id = calculateGlobalBestTarget();
+
+    if (best_target_id != -1) {
+      current_inspection_island_id_ = best_target_id;
+      res = expl_manager_->planInspectMotion(fd_->start_pos_, fd_->start_pt_, fd_->start_vel_,
+          fd_->start_acc_, fd_->start_yaw_, island_buffer_[current_inspection_island_id_].box);
+      cout << "[Planner] Global planning for inspection island ID: "
+           << current_inspection_island_id_ << ", result: " << res << std::endl;
+    } else {
+      ROS_WARN("[Planner] No valid island found for global planning.");
+      res = INSP_FAIL;
+    }
+  } else if (inpsct_planner_type_ == 2) {  // --- 局部规划 ---
+    if (current_inspection_island_id_ != -1) {
+      res = expl_manager_->planInspectMotion(fd_->start_pos_, fd_->start_pt_, fd_->start_vel_,
+          fd_->start_acc_, fd_->start_yaw_, island_buffer_[current_inspection_island_id_].box);
+      cout << "[Planner] Local planning for inspection island ID: " << current_inspection_island_id_
+           << ", result: " << res << std::endl;
+    } else {
+      ROS_ERROR("[Planner] Local replan triggered but current_inspection_island_id_ is -1!");
+      res = INSP_FAIL;
     }
   }
 
-  void FastExplorationFSM::swarmTrajTimerCallback(const ros::TimerEvent& e) {
-    // Broadcast newest traj of this drone to others
-    if (state_ == EXEC_TRAJ) {
-      swarm_traj_pub_.publish(fd_->newest_traj_);
+  if (res == INSP_SUCCEED) {
+    auto info = &planner_manager_->local_data_;
+    info->start_time_ = (ros::Time::now() - time_r).toSec() > 0 ? ros::Time::now() : time_r;
 
-    } else if (state_ == WAIT_TRIGGER) {
-      // Publish a virtual traj at current pose, to avoid collision
-      bspline::Bspline bspline;
-      bspline.order = planner_manager_->pp_.bspline_degree_;
-      bspline.start_time = ros::Time::now();
-      bspline.traj_id = planner_manager_->local_data_.traj_id_;
+    bspline::Bspline bspline;
+    bspline.order = planner_manager_->pp_.bspline_degree_;
+    bspline.start_time = info->start_time_;
+    bspline.traj_id = info->traj_id_;
+    Eigen::MatrixXd pos_pts = info->position_traj_.getControlPoint();
+    for (int i = 0; i < pos_pts.rows(); ++i) {
+      geometry_msgs::Point pt;
+      pt.x = pos_pts(i, 0);
+      pt.y = pos_pts(i, 1);
+      pt.z = pos_pts(i, 2);
+      bspline.pos_pts.push_back(pt);
+    }
+    Eigen::VectorXd knots = info->position_traj_.getKnot();
+    for (int i = 0; i < knots.rows(); ++i) {
+      bspline.knots.push_back(knots(i));
+    }
+    Eigen::MatrixXd yaw_pts = info->yaw_traj_.getControlPoint();
+    for (int i = 0; i < yaw_pts.rows(); ++i) {
+      double yaw = yaw_pts(i, 0);
+      bspline.yaw_pts.push_back(yaw);
+    }
+    bspline.yaw_dt = info->yaw_traj_.getKnotSpan();
+    fd_->newest_traj_ = bspline;
+  }
 
-      Eigen::MatrixXd pos_pts(4, 3);
-      for (int i = 0; i < 4; ++i) pos_pts.row(i) = fd_->odom_pos_.transpose();
+  return res;
+}
 
-      for (int i = 0; i < pos_pts.rows(); ++i) {
-        geometry_msgs::Point pt;
-        pt.x = pos_pts(i, 0);
-        pt.y = pos_pts(i, 1);
-        pt.z = pos_pts(i, 2);
-        bspline.pos_pts.push_back(pt);
-      }
+/** // TODO
+ * @brief 在所有未完成的岛屿中，计算出全局最佳目标。当前策略是：选择欧式距离最近的岛屿。
+ * @return 最佳目标的ID；如果没有可用目标，则返回-1。
+ */
+int FastExplorationFSM::calculateGlobalBestTarget() {
+  // 使用 lock_guard 来安全地访问共享数据
+  std::lock_guard<std::mutex> lock(island_buffer_mutex_);
 
-      NonUniformBspline tmp(pos_pts, planner_manager_->pp_.bspline_degree_, 1.0);
-      Eigen::VectorXd knots = tmp.getKnot();
-      for (int i = 0; i < knots.rows(); ++i) {
-        bspline.knots.push_back(knots(i));
-      }
-      bspline.drone_id = expl_manager_->ep_->drone_id_;
-      swarm_traj_pub_.publish(bspline);
+  int best_target_id = -1;
+  double min_dist_sq = 100000000;
+
+  const auto& island_buffer_ = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
+
+  // 遍历所有已知的岛屿
+  for (const auto& pair : island_buffer_) {
+    int id = pair.first;
+    const auto& box_corners = pair.second.box;
+
+    // 如果岛屿已经检视完成，则跳过
+    if (completed_island_ids_.count(id)) {
+      continue;
+    }
+
+    // 计算到岛屿中心的距离
+    Eigen::Vector3d island_center = (box_corners[0] + box_corners[1]) / 2.0;
+    double dist_sq = (island_center - fd_->odom_pos_).squaredNorm();
+
+    // 寻找最近的岛屿
+    if (dist_sq < min_dist_sq) {
+      min_dist_sq = dist_sq;
+      best_target_id = id;
     }
   }
 
-  // ============================== inspect =====================================
-  /**
-   * @brief 计算全局最优的inspection island
-   */
-  int FastExplorationFSM::callInspectPlanner() {
-    ROS_INFO("[INSP] Executing inspection planning.");
+  return best_target_id;
+}
 
-    ros::Time time_r = ros::Time::now() + ros::Duration(fp_->replan_time_);
+/**
+ * @brief 检测现在检视的island是否完成
+ * @return 完成-true，没完成-false
+ */
+bool FastExplorationFSM::checkIslandFinished() {
+  if (current_inspection_island_id_ == -1) return true;
 
-    auto& island_buffer_ = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
-    if (island_buffer_.empty()) {
-      ROS_WARN("[Planner] No islands available for inspection planning.");
-      return INSP_FAIL;
-    }
-
-    int res = INSP_FAIL;
-    if (inpsct_planner_type_ == 1) {  // --- 全局规划 ---
-      int best_target_id = calculateGlobalBestTarget();
-
-      if (best_target_id != -1) {
-        current_inspection_island_id_ = best_target_id;
-        res = expl_manager_->planInspectMotion(fd_->start_pos_, fd_->start_pt_, fd_->start_vel_,
-              fd_->start_acc_, fd_->start_yaw_, island_buffer_[current_inspection_island_id_].box);
-        cout << "[Planner] Global planning for inspection island ID: " << current_inspection_island_id_
-             << ", result: " << res << std::endl;
-      } else {
-        ROS_WARN("[Planner] No valid island found for global planning.");
-        res = INSP_FAIL;
-      }
-    } else if (inpsct_planner_type_ == 2) {  // --- 局部规划 ---
-      if (current_inspection_island_id_ != -1) {
-        res = expl_manager_->planInspectMotion(fd_->start_pos_, fd_->start_pt_, fd_->start_vel_, 
-                                               fd_->start_acc_, fd_->start_yaw_, island_buffer_[current_inspection_island_id_].box);
-        cout << "[Planner] Local planning for inspection island ID: " << current_inspection_island_id_
-             << ", result: " << res << std::endl;
-      } else {
-        ROS_ERROR("[Planner] Local replan triggered but current_inspection_island_id_ is -1!");
-        res = INSP_FAIL;
-      }
-    }
-
-    if (res == INSP_SUCCEED) {
-      auto info = &planner_manager_->local_data_;
-      info->start_time_ = (ros::Time::now() - time_r).toSec() > 0 ? ros::Time::now() : time_r;
-
-      bspline::Bspline bspline;
-      bspline.order = planner_manager_->pp_.bspline_degree_;
-      bspline.start_time = info->start_time_;
-      bspline.traj_id = info->traj_id_;
-      Eigen::MatrixXd pos_pts = info->position_traj_.getControlPoint();
-      for (int i = 0; i < pos_pts.rows(); ++i) {
-        geometry_msgs::Point pt;
-        pt.x = pos_pts(i, 0);
-        pt.y = pos_pts(i, 1);
-        pt.z = pos_pts(i, 2);
-        bspline.pos_pts.push_back(pt);
-      }
-      Eigen::VectorXd knots = info->position_traj_.getKnot();
-      for (int i = 0; i < knots.rows(); ++i) {
-        bspline.knots.push_back(knots(i));
-      }
-      Eigen::MatrixXd yaw_pts = info->yaw_traj_.getControlPoint();
-      for (int i = 0; i < yaw_pts.rows(); ++i) {
-        double yaw = yaw_pts(i, 0);
-        bspline.yaw_pts.push_back(yaw);
-      }
-      bspline.yaw_dt = info->yaw_traj_.getKnotSpan();
-      fd_->newest_traj_ = bspline;
-    }
-
-    return res;
+  const auto& island_buffer_ = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
+  // 1. 获取当前正在检视的岛屿的包围盒
+  std::unique_lock<std::mutex> island_lock(island_buffer_mutex_);
+  if (island_buffer_.find(current_inspection_island_id_) == island_buffer_.end()) {
+    ROS_ERROR("[FSM] checkIslandFinished: Current inspection ID %d not found in buffer.",
+        current_inspection_island_id_);
+    return true;
   }
+  // 复制一份数据，然后立即解锁
+  const auto& island_corners = island_buffer_.at(current_inspection_island_id_).box;
+  const Eigen::Vector3d island_bmin = island_corners[0];
+  const Eigen::Vector3d island_bmax = island_corners[1];
+  island_lock.unlock();
 
-  /** // TODO
-   * @brief 在所有未完成的岛屿中，计算出全局最佳目标。当前策略是：选择欧式距离最近的岛屿。
-   * @return 最佳目标的ID；如果没有可用目标，则返回-1。
-   */
-  int FastExplorationFSM::calculateGlobalBestTarget() {
-    // 使用 lock_guard 来安全地访问共享数据
-    std::lock_guard<std::mutex> lock(island_buffer_mutex_);
+  // 2. 获取当前地图中所有前沿点的包围盒
+  vector<pair<Eigen::Vector3d, Eigen::Vector3d>> all_frontier_boxes_raw;
+  expl_manager_->frontier_finder_->getFrontierBoxes(all_frontier_boxes_raw);
 
-    int best_target_id = -1;
-    double min_dist_sq = 100000000;
-
-    const auto& island_buffer_ = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
-
-    // 遍历所有已知的岛屿
-    for (const auto& pair : island_buffer_) {
-      int id = pair.first;
-      const auto& box_corners = pair.second.box;
-
-      // 如果岛屿已经检视完成，则跳过
-      if (completed_island_ids_.count(id)) {
-        continue;
-      }
-
-      // 计算到岛屿中心的距离
-      Eigen::Vector3d island_center = (box_corners[0] + box_corners[1]) / 2.0;
-      double dist_sq = (island_center - fd_->odom_pos_).squaredNorm();
-
-      // 寻找最近的岛屿
-      if (dist_sq < min_dist_sq) {
-        min_dist_sq = dist_sq;
-        best_target_id = id;
-      }
-    }
-
-    return best_target_id;
-  }
-
-  /**
-   * @brief 检测现在检视的island是否完成
-   * @return 完成-true，没完成-false
-   */
-  bool FastExplorationFSM::checkIslandFinished() {
-    if (current_inspection_island_id_ == -1) return true;
-
-    const auto& island_buffer_ = expl_manager_->ed_->swarm_state_[getId() - 1].island_buffer;
-    // 1. 获取当前正在检视的岛屿的包围盒
-    std::unique_lock<std::mutex> island_lock(island_buffer_mutex_);
-    if (island_buffer_.find(current_inspection_island_id_) == island_buffer_.end()) {
-      ROS_ERROR("[FSM] checkIslandFinished: Current inspection ID %d not found in buffer.",
-                current_inspection_island_id_);
-      return true;
-    }
-    // 复制一份数据，然后立即解锁
-    const auto& island_corners = island_buffer_.at(current_inspection_island_id_).box;
-    const Eigen::Vector3d island_bmin = island_corners[0];
-    const Eigen::Vector3d island_bmax = island_corners[1];
-    island_lock.unlock();
-
-    // 2. 获取当前地图中所有前沿点的包围盒
-    vector<pair<Eigen::Vector3d, Eigen::Vector3d>> all_frontier_boxes_raw;
-    expl_manager_->frontier_finder_->getFrontierBoxes(all_frontier_boxes_raw);
-
-    if (all_frontier_boxes_raw.empty()) {
-      ROS_INFO("[FSM] All frontier is finished.");
-      return true;
-    }
-
-    // 3. 遍历所有前沿点，检查是否存在重叠
-    for (const auto& box_raw : all_frontier_boxes_raw) {
-      const Eigen::Vector3d& center = box_raw.first;
-      const Eigen::Vector3d& scale = box_raw.second;
-      const Eigen::Vector3d frontier_bmin = center - scale / 2.0;
-      const Eigen::Vector3d frontier_bmax = center + scale / 2.0;
-
-      // 4. 检查岛屿包围盒与前沿点包围盒是否重叠
-      bool has_overlap = true;
-      for (int i = 0; i < 3; ++i) {
-        if (std::max(island_bmin[i], frontier_bmin[i]) >
-            std::min(island_bmax[i], frontier_bmax[i]) + 1e-3) {
-          has_overlap = false;
-          break;
-        }
-      }
-
-      if (has_overlap) {
-        return false;
-      }
-    }
-
-    // 5. 如果遍历完所有前沿点都没有发现重叠，说明该岛屿已检视完成
-    ROS_INFO("[FSM] Island %d finished: No overlapping frontiers found.", current_inspection_island_id_);
+  if (all_frontier_boxes_raw.empty()) {
+    ROS_INFO("[FSM] All frontier is finished.");
     return true;
   }
 
+  // 3. 遍历所有前沿点，检查是否存在重叠
+  for (const auto& box_raw : all_frontier_boxes_raw) {
+    const Eigen::Vector3d& center = box_raw.first;
+    const Eigen::Vector3d& scale = box_raw.second;
+    const Eigen::Vector3d frontier_bmin = center - scale / 2.0;
+    const Eigen::Vector3d frontier_bmax = center + scale / 2.0;
 
-  /// @brief 0：低空无人机，1：高空无人机
-  /// @param type 
-  void FastExplorationFSM::switchDroneType(const int type) {
-    if (fp_->drone_type_ == type){
-      ROS_WARN("drone %d, already in type %d", getId(), type);
-      return;
-    } 
-    exploration_manager::CamSwitch msg;
-    ROS_WARN("drone %d, from %d to %d", getId(), fp_->drone_type_, type);
-    if (type == 0) {
-      msg.to_drone_type = exploration_manager::CamSwitch::LOW;
-      cam_switch_pub_.publish(msg);
-      fp_->drone_type_ = 0;
-      inpsct_planner_type_ = 1;
-    } else if (type == 1) {
-      msg.to_drone_type = exploration_manager::CamSwitch::HIGH;
-      cam_switch_pub_.publish(msg);
-      fp_->drone_type_ = 1;
+    // 4. 检查岛屿包围盒与前沿点包围盒是否重叠
+    bool has_overlap = true;
+    for (int i = 0; i < 3; ++i) {
+      if (std::max(island_bmin[i], frontier_bmin[i]) >
+          std::min(island_bmax[i], frontier_bmax[i]) + 1e-3) {
+        has_overlap = false;
+        break;
+      }
+    }
+
+    if (has_overlap) {
+      return false;
     }
   }
+
+  // 5. 如果遍历完所有前沿点都没有发现重叠，说明该岛屿已检视完成
+  ROS_INFO(
+      "[FSM] Island %d finished: No overlapping frontiers found.", current_inspection_island_id_);
+  return true;
+}
+
+/// @brief 0：低空无人机，1：高空无人机
+/// @param type
+void FastExplorationFSM::switchDroneType(const int type) {
+  if (fp_->drone_type_ == type) {
+    ROS_WARN("drone %d, already in type %d", getId(), type);
+    return;
+  }
+  exploration_manager::CamSwitch msg;
+  ROS_WARN("drone %d, from %d to %d", getId(), fp_->drone_type_, type);
+  if (type == 0) {
+    msg.to_drone_type = exploration_manager::CamSwitch::LOW;
+    cam_switch_pub_.publish(msg);
+    fp_->drone_type_ = 0;
+    inpsct_planner_type_ = 1;
+  } else if (type == 1) {
+    msg.to_drone_type = exploration_manager::CamSwitch::HIGH;
+    cam_switch_pub_.publish(msg);
+    fp_->drone_type_ = 1;
+  }
+}
 
 }  // namespace fast_planner

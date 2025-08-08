@@ -268,21 +268,16 @@ void FastExplorationManager::getBoundaryIslandEcrgmts(
     const Eigen::Vector3d& pos, const vector<int>& unvisited_ids, vector<double>& encouragements) {
   encouragements.clear();
   encouragements.resize(unvisited_ids.size(), 0.0);  // 初始化鼓励值为0
-
-  const int cur_id = hgrid_->posToGridId(pos);
   vector<Eigen::Vector3d> cur_grid_box;
   cur_grid_box.resize(2);
-  hgrid_->getGridBox(cur_id, cur_grid_box[0], cur_grid_box[1]);
+  hgrid_->getGridBox(hgrid_->posToGridId(pos), cur_grid_box[0], cur_grid_box[1]);
 
   std::map<int, Island> island_map;
   this->island_finder_->getAllIslandBoxs(island_map, ep_->drone_id_);
   for (const auto& pair : island_map) {
+    const auto& islandbox = pair.second.box;
     // 检查当这个isalnd是否和当前区域相交
-    const auto& island_min = pair.second.box[0];
-    const auto& island_max = pair.second.box[1];
-    if (cur_grid_box[1].x() < island_min.x() || cur_grid_box[0].x() > island_max.x() ||
-        cur_grid_box[1].y() < island_min.y() || cur_grid_box[0].y() > island_max.y())
-      continue;  // 没有相交
+    if (!areRegionsIntersecting(islandbox, cur_grid_box)) continue;  // 没有相交
 
     for (int i = 0; i < unvisited_ids.size(); ++i) {  // 再检查这个island是否和未访问的栅格相交
       int grid_id = unvisited_ids[i];
@@ -290,18 +285,48 @@ void FastExplorationManager::getBoundaryIslandEcrgmts(
       hgrid_->getGridBox(grid_id, min_pt, max_pt);  // 得到相邻unvisited grid的包围盒
 
       // 检查当前栅格是否与岛屿相交
-      if (min_pt.x() > island_max.x() || max_pt.x() < island_min.x() ||
-          min_pt.y() > island_max.y() || max_pt.y() < island_min.y()) {
+      if (!areRegionsIntersecting(islandbox, {min_pt, max_pt})) {
         continue;  // 没有相交
       }
 
       // 认为这个island为连接两个区域的走廊，计算这个island的面积
       // 把和未知grid区域和island的相交面积作为激励值
-      const double area = getOverlapArea(min_pt, max_pt, island_min, island_max);
+      const double area = getOverlapArea(min_pt, max_pt, islandbox[0], islandbox[1]);
       if (area < 0.1) continue;  // 如果相交面积小于0.1，则不考虑
       encouragements[i] = area;
     }
   }
+}
+
+/**
+ * @brief 判断两个由最小点和最大点定义的三维区域在XY平面上的投影是否相交。
+ * 这包括重叠、包含以及边或角接触的情况。
+ *
+ * @param region1 第一个区域，由两个Eigen::Vector3d表示（最小点和最大点）。
+ * @param region2 第二个区域，由两个Eigen::Vector3d表示（最小点和最大点）。
+ * @return bool 如果两个区域在XY平面上相交，则返回true，否则返回false。
+ */
+bool FastExplorationManager::areRegionsIntersecting(
+    const std::vector<Eigen::Vector3d>& region1, const std::vector<Eigen::Vector3d>& region2) {
+
+  // 参数校验
+  if (region1.size() != 2 || region2.size() != 2) {
+    std::cerr << "错误：每个区域必须包含恰好两个点（最小点和最大点）。" << std::endl;
+    return false;
+  }
+
+  // 提取二维区域的边界
+  const Eigen::Vector2d min1(region1[0].x(), region1[0].y());
+  const Eigen::Vector2d max1(region1[1].x(), region1[1].y());
+  const Eigen::Vector2d min2(region2[0].x(), region2[0].y());
+  const Eigen::Vector2d max2(region2[1].x(), region2[1].y());
+
+  // 判断在X轴和Y轴上的投影是否都重叠
+  // 如果两个矩形在X轴上投影重叠，并且在Y轴上投影也重叠，那么它们就相交。
+  bool intersectX = (min1.x() <= max2.x() && min2.x() <= max1.x());
+  bool intersectY = (min1.y() <= max2.y() && min2.y() <= max1.y());
+
+  return intersectX && intersectY;
 }
 
 /**
@@ -1501,7 +1526,7 @@ bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d
 
   vector<double> encouragement;  // 获取每个grid_ids的对应激励值
   getBoundaryIslandEcrgmts(positions[0], grid_ids, encouragement);
-
+  cout << "getBoundaryIslandEcrgmts" << endl;
 
   std::cout << "Allocated grid: ";
   for (auto id : grid_ids) std::cout << id << ", ";
@@ -1709,8 +1734,9 @@ bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d
   // Create par file
   file.open(ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".par");
   file << "SPECIAL\n";
-  file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) +
-  ".atsp\n"; file << "SALESMEN = " << to_string(drone_num) << "\n"; file << "MTSP_OBJECTIVE = MINSUM\n";
+  file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".atsp\n";
+  file << "SALESMEN = " << to_string(drone_num) << "\n";
+  file << "MTSP_OBJECTIVE = MINSUM\n";
   // file << "MTSP_MIN_SIZE = " << to_string(min(int(ed_->frontiers_.size()) / drone_num, 4)) <<
   // "\n"; file << "MTSP_MAX_SIZE = "
   //      << to_string(max(1, int(ed_->frontiers_.size()) / max(1, drone_num - 1))) << "\n";
@@ -2197,4 +2223,18 @@ void FastExplorationManager::getFrontiersInBox(
   }
 }
 
+bool FastExplorationManager::haveIslandInGrid(const Eigen::Vector3d& pos){
+  vector<Eigen::Vector3d> box;
+  box.resize(2);
+  hgrid_->getGridBox(hgrid_->posToGridId(pos), box[0], box[1]);
+  std::map<int, Island> island_map;
+  island_finder_->getAllIslandBoxs(island_map, ep_->drone_id_);
+  for(const auto& pair : island_map){
+    const auto& islandbox = pair.second.box;
+    if(areRegionsIntersecting(box, islandbox)){
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace fast_planner

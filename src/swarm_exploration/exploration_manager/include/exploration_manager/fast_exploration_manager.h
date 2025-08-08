@@ -69,8 +69,8 @@ public:
   void getVisitedGrids(vector<int>& grid_ids);
 
   bool findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
-    const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
-    const Eigen::Vector3d growth_vector, bool init = false);
+      const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
+      const Eigen::Vector3d growth_vector, bool init = false);
 
   bool findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
       const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
@@ -88,6 +88,8 @@ public:
   shared_ptr<SDFMap> sdf_map_;
   shared_ptr<IslandFinder> island_finder_;
   // shared_ptr<UniformGrid> uniform_grid_;
+
+  bool haveIslandInGrid(const Eigen::Vector3d& pos);
 
 private:
   shared_ptr<EDTEnvironment> edt_environment_;
@@ -128,6 +130,9 @@ private:
 
   double getOverlapArea(const Eigen::Vector3d& min1, const Eigen::Vector3d& max1,
       const Eigen::Vector3d& min2, const Eigen::Vector3d& max2);
+
+  bool areRegionsIntersecting(
+      const std::vector<Eigen::Vector3d>& region1, const std::vector<Eigen::Vector3d>& region2);
 
 public:
   typedef shared_ptr<FastExplorationManager> Ptr;

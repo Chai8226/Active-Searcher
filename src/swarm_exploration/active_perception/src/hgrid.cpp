@@ -525,14 +525,9 @@ double HGrid::getCostDroneToGrid(
 /// @return 
 double HGrid::getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& grid_id,
     const Vector3d& v1, const vector<int>& first, const double& encouragement) {
-  if(encouragement != 0){
-    ROS_WARN("encouragement = %d", encouragement);
-  }
+  cout << "grid id: " << grid_id << "encouragement" << encouragement << endl;
 
   auto& grid = getGrid(grid_id);
-  Eigen::Vector3i cur_grid_index;
-  grid1_->posToIndex(pos, cur_grid_index);
-  int cur_id = grid1_->toAddress(cur_grid_index);  // 当前位置的网格id
 
   // consider v change
   double dist1, cost;
@@ -957,7 +952,9 @@ void HGrid::getGridBox(const int& id, Eigen::Vector3d& min_pt, Eigen::Vector3d& 
 int HGrid::posToGridId(const Eigen::Vector3d& pos) {
   Eigen::Vector3i idx;
   grid1_->posToIndex(pos, idx);
-  int id = grid1_->toAddress(idx);
-  return id;
+  return grid1_->toAddress(idx);
 }
+
+
+
 }  // namespace fast_planner
