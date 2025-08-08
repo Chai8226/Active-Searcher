@@ -360,6 +360,71 @@ void HGrid::getCostMatrix(const vector<Eigen::Vector3d>& positions,
 void HGrid::getCoverageCostMatrix(const vector<Eigen::Vector3d>& positions,
     const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
     const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat,
+    const vector<double>& encouragement) {
+  // first_ids and second_ids are drone_num x 1-4 vectors
+
+  // Fill the cost matrix
+  const int drone_num = positions.size();
+  const int grid_num = grid_ids.size();
+  const int dimen = 1 + drone_num + grid_num;
+  mat = Eigen::MatrixXd::Zero(dimen, dimen);
+
+  // std::cout << "First id: ";
+  // for (auto ids : first_ids)
+  //   for (auto id : ids)
+  //     std::cout << id << ", ";
+  // std::cout << "" << std::endl;
+
+  // std::cout << "Second id: ";
+  // for (auto ids : second_ids)
+  //   for (auto id : ids)
+  //     std::cout << id << ", ";
+  // std::cout << "" << std::endl;
+
+  // Virtual depot to drones
+  for (int i = 0; i < drone_num; ++i) {
+    mat(0, 1 + i) = -1000;
+    mat(1 + i, 0) = 1000;
+  }
+  // Virtual depot to grid
+  for (int i = 0; i < grid_num; ++i) {
+    mat(0, 1 + drone_num + i) = 1000;
+    mat(1 + drone_num + i, 0) = 0;
+  }
+  // Costs between drones
+  for (int i = 0; i < drone_num; ++i) {
+    for (int j = 0; j < drone_num; ++j) {
+      mat(1 + i, 1 + j) = 10000;
+    }
+  }
+
+  // Costs from drones to grid
+  for (int i = 0; i < drone_num; ++i) {
+    for (int j = 0; j < grid_num; ++j) {
+      double cost = getCoverageCostDroneToGrid(
+          positions[i], grid_ids[j], velocities[i], first_ids[i], encouragement[j]);
+      mat(1 + i, 1 + drone_num + j) = cost;
+      mat(1 + drone_num + j, 1 + i) = 0;
+    }
+  }
+  // Costs between grid
+  for (int i = 0; i < grid_num; ++i) {
+    for (int j = i + 1; j < grid_num; ++j) {
+      double cost = getCostGridToGrid(grid_ids[i], grid_ids[j], first_ids, second_ids, drone_num);
+      mat(1 + drone_num + i, 1 + drone_num + j) = cost;
+      mat(1 + drone_num + j, 1 + drone_num + i) = cost;
+    }
+  }
+
+  // Diag
+  for (int i = 0; i < dimen; ++i) {
+    mat(i, i) = 1000;
+  }
+}
+
+void HGrid::getCoverageCostMatrix(const vector<Eigen::Vector3d>& positions,
+    const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
+    const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat,
     const Eigen::Vector3d& growth_vector = Eigen::Vector3d(0, 0, 0)) {
   // first_ids and second_ids are drone_num x 1-4 vectors
 
@@ -447,6 +512,61 @@ double HGrid::getCostDroneToGrid(
       }
     }
   }
+  // if (drone_num > 1) cost *= w_first_;
+  return cost;
+}
+
+/// @brief 基于走廊encouragement的drone2grid代价计算
+/// @param pos 
+/// @param grid_id 
+/// @param v1 
+/// @param first 
+/// @param encouragement 
+/// @return 
+double HGrid::getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& grid_id,
+    const Vector3d& v1, const vector<int>& first, const double& encouragement) {
+  if(encouragement != 0){
+    ROS_WARN("encouragement = %d", encouragement);
+  }
+
+  auto& grid = getGrid(grid_id);
+  Eigen::Vector3i cur_grid_index;
+  grid1_->posToIndex(pos, cur_grid_index);
+  int cur_id = grid1_->toAddress(cur_grid_index);  // 当前位置的网格id
+
+  // consider v change
+  double dist1, cost;
+  if (v1.norm() > 1e-3) {
+    const auto dir = (grid.center_ - pos).normalized();  // 当前位置到网格中心的向量
+    const auto vdir = v1.normalized();
+    double diff = acos(vdir.dot(dir));  // 速度方向的变化量
+    cost += 1.5 * diff;
+  }
+
+  dist1 = (pos - grid.center_).norm();
+  if (dist1 < 5.0) {
+    path_finder_->reset();
+    if (path_finder_->search(pos, grid.center_) == Astar::REACH_END) {
+      auto path = path_finder_->getPath();
+      cost = path_finder_->pathLength(path);
+    } else {
+      cost = dist1 + consistent_cost2_;
+    }
+  } else {
+    cost = 1.5 * dist1 + consistent_cost2_;
+  }
+  // Consistency cost with previous first grid
+  if (!first.empty()) {
+    for (auto first_id : first) {
+      if (grid_id == first_id) {
+        cost += consistent_cost_;
+        break;
+      }
+    }
+  }
+
+  const double ecrgmt_max = 0.8;  // 限制幅度
+  cost -= min(encouragement, ecrgmt_max);
   // if (drone_num > 1) cost *= w_first_;
   return cost;
 }

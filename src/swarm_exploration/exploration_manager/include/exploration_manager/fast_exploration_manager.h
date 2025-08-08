@@ -69,8 +69,12 @@ public:
   void getVisitedGrids(vector<int>& grid_ids);
 
   bool findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
+    const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
+    const Eigen::Vector3d growth_vector, bool init = false);
+
+  bool findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
       const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
-      bool init = false, const Eigen::Vector3d growth_vector = Eigen::Vector3d(0, 0, 0));
+      bool init = false);
 
   // inspect
   int planInspectMotion(const Vector3d& start_pos_, const Vector3d& pos, const Vector3d& vel,
@@ -119,8 +123,9 @@ private:
       const Vector3d& yaw, const Vector3d& next_pos, const double& next_yaw,
       const Vector3d& target_vel);
 
-  Eigen::Vector3d getBoundaryIslandEcrgmts(
+  void getBoundaryIslandEcrgmts(
       const Eigen::Vector3d& pos, const vector<int>& unvisited_ids, vector<double>& encouragements);
+
   double getOverlapArea(const Eigen::Vector3d& min1, const Eigen::Vector3d& max1,
       const Eigen::Vector3d& min2, const Eigen::Vector3d& max2);
 

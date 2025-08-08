@@ -121,7 +121,8 @@ void FastExplorationManager::initialize(ros::NodeHandle& nh) {
   // fout.close();
 
   island_finder_.reset(new IslandFinder());
-  island_finder_->init(this->sdf_map_, this->frontier_finder_ , this->ep_->drone_id_, this->ep_->drone_num_);
+  island_finder_->init(
+      this->sdf_map_, this->frontier_finder_, this->ep_->drone_id_, this->ep_->drone_num_);
 }
 
 /// @brief 根据所有无人机的当前位置，更新visited_grid_map
@@ -257,23 +258,24 @@ void FastExplorationManager::getVisitedGrids(vector<int>& grid_ids) {
 // }
 
 /// @brief
-/// 找到所有连接起当前grid和非访问grid的未知区域，根据他们的面积为对应的相邻grid施加一个激励值
+/// 找到所有连接起当前grid和非访问grid的未知区域，根据他们的面积为对应的相邻grid施加一个激励值，不相邻的激励值为0
 /// @param pos  当前位置
 /// @param island_boxes   岛屿的边界框
 /// @param unvisited_ids  未访问的栅格ID
 /// @param encouragements   鼓励值向量，对应每个id 的 unvisited_ids的激励值
 /// @return
-Eigen::Vector3d FastExplorationManager::getBoundaryIslandEcrgmts(const Eigen::Vector3d& pos,  const vector<int>& unvisited_ids,
-    vector<double>& encouragements) {
+void FastExplorationManager::getBoundaryIslandEcrgmts(
+    const Eigen::Vector3d& pos, const vector<int>& unvisited_ids, vector<double>& encouragements) {
   encouragements.clear();
   encouragements.resize(unvisited_ids.size(), 0.0);  // 初始化鼓励值为0
+
   const int cur_id = hgrid_->posToGridId(pos);
   vector<Eigen::Vector3d> cur_grid_box;
   cur_grid_box.resize(2);
   hgrid_->getGridBox(cur_id, cur_grid_box[0], cur_grid_box[1]);
-  
+
   std::map<int, Island> island_map;
-  island_finder_->getAllIslandBoxs(island_map, ep_->drone_id_);
+  this->island_finder_->getAllIslandBoxs(island_map, ep_->drone_id_);
   for (const auto& pair : island_map) {
     // 检查当这个isalnd是否和当前区域相交
     const auto& island_min = pair.second.box[0];
@@ -285,7 +287,7 @@ Eigen::Vector3d FastExplorationManager::getBoundaryIslandEcrgmts(const Eigen::Ve
     for (int i = 0; i < unvisited_ids.size(); ++i) {  // 再检查这个island是否和未访问的栅格相交
       int grid_id = unvisited_ids[i];
       Eigen::Vector3d min_pt, max_pt;
-      hgrid_->getGridBox(grid_id, min_pt, max_pt);
+      hgrid_->getGridBox(grid_id, min_pt, max_pt);  // 得到相邻unvisited grid的包围盒
 
       // 检查当前栅格是否与岛屿相交
       if (min_pt.x() > island_max.x() || max_pt.x() < island_min.x() ||
@@ -294,12 +296,49 @@ Eigen::Vector3d FastExplorationManager::getBoundaryIslandEcrgmts(const Eigen::Ve
       }
 
       // 认为这个island为连接两个区域的走廊，计算这个island的面积
-      double area = (island_max.x() - island_min.x()) * (island_max.y() - island_min.y());
-      if (area < 0.1) continue;
-      // 把这个面积作为激励值
+      // 把和未知grid区域和island的相交面积作为激励值
+      const double area = getOverlapArea(min_pt, max_pt, island_min, island_max);
+      if (area < 0.1) continue;  // 如果相交面积小于0.1，则不考虑
       encouragements[i] = area;
     }
   }
+}
+
+/**
+ * @brief 判断两个三维立方体区域在XY平面上的投影是否相交，并计算相交面积。
+ * @param min1 第一个区域的xyz坐标最小点。
+ * @param max1 第一个区域的xyz坐标最大点。
+ * @param min2 第二个区域的xyz坐标最小点。
+ * @param max2 第二个区域的xyz坐标最大点。
+ * @return double 如果两个区域在XY平面上的投影相交，则返回相交区域的面积。
+ * 如果它们不相交（或仅在边或点接触），则返回 -1。
+ */
+double FastExplorationManager::getOverlapArea(const Eigen::Vector3d& min1,
+    const Eigen::Vector3d& max1, const Eigen::Vector3d& min2, const Eigen::Vector3d& max2) {
+  // 计算 X 轴上的重叠长度
+  // 重叠区间的起始点是两个起始点中较大的一个
+  double overlap_x_start = std::max(min1.x(), min2.x());
+  // 重叠区间的结束点是两个结束点中较小的一个
+  double overlap_x_end = std::min(max1.x(), max2.x());
+
+  double overlap_width = overlap_x_end - overlap_x_start;
+
+  // 计算 Y 轴上的重叠长度
+  // 重叠区间的起始点是两个起始点中较大的一个
+  double overlap_y_start = std::max(min1.y(), min2.y());
+  // 重叠区间的结束点是两个结束点中较小的一个
+  double overlap_y_end = std::min(max1.y(), max2.y());
+
+  double overlap_height = overlap_y_end - overlap_y_start;
+
+  // 如果宽度或高度小于或等于0，表示两个矩形不相交或仅在边/角接触
+  // 这种情况下没有重叠“面积”，按要求返回-1
+  if (overlap_width <= 0 || overlap_height <= 0) {
+    return -1.0;
+  }
+
+  // 返回重叠面积
+  return overlap_width * overlap_height;
 }
 
 /**
@@ -314,7 +353,7 @@ void FastExplorationManager::planDisQueue(const Vector3d& pos, const Vector3d& g
   vector<int> grid_ids;
   vector<vector<int>> other_ids;
 
-  findCoverageTourOfGrid({ pos }, { vel }, grid_ids, other_ids, false, growth_vector);
+  findCoverageTourOfGrid({ pos }, { vel }, grid_ids, other_ids, false);
 
   std::cout << "[planDisQueue] :" << grid_ids.size() << " grid centers to plan" << std::endl;
 
@@ -1430,12 +1469,11 @@ bool FastExplorationManager::findGlobalTourOfGrid(const vector<Eigen::Vector3d>&
 }
 
 /**
- * @brief 根据本机swarm data中分配到的grid
- * id，首先找到其中还没有被访问的，然后调用求解器规划最佳访问顺序，输出到indices。
+ * @brief 基于走廊encouragement
  */
 bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
     const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
-    bool init, const Eigen::Vector3d growth_vector) {
+    bool init) {
   ROS_INFO("Find grid tour---------------");
 
   auto t1 = ros::Time::now();
@@ -1447,7 +1485,176 @@ bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d
       grid_ids.push_back(local_grid_ids[i]);
     }
   }
-  //getBoundaryIslandEcrgmts(positions[0], )
+
+  // hgrid_->updateBaseCoor();  // Use the latest basecoor transform of swarm
+
+  vector<int> first_ids, second_ids;
+  // hgrid_->inputFrontiers(ed_->averages_);
+
+  hgrid_->getConsistentGrid(ed_->last_grid_ids_, grid_ids, first_ids, second_ids);
+
+  if (grid_ids.empty()) {
+    ROS_WARN("Empty dominance.");
+    ed_->grid_tour_.clear();
+    return false;
+  }
+
+  vector<double> encouragement;  // 获取每个grid_ids的对应激励值
+  getBoundaryIslandEcrgmts(positions[0], grid_ids, encouragement);
+
+
+  std::cout << "Allocated grid: ";
+  for (auto id : grid_ids) std::cout << id << ", ";
+  std::cout << "" << std::endl;
+
+  Eigen::MatrixXd mat;
+  // uniform_grid_->getCostMatrix(positions, velocities, first_ids, grid_ids, mat);
+  if (!init)
+    hgrid_->getCoverageCostMatrix(
+        positions, velocities, { first_ids }, { second_ids }, grid_ids, mat, encouragement);
+  else
+    hgrid_->getCoverageCostMatrix(
+        positions, velocities, { {} }, { {} }, grid_ids, mat, encouragement);
+
+  double mat_time = (ros::Time::now() - t1).toSec();
+
+  // Find optimal path through ATSP
+  t1 = ros::Time::now();
+  const int dimension = mat.rows();
+  const int drone_num = 1;
+
+  // Create problem file
+  ofstream file(ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".atsp");
+  file << "NAME : amtsp\n";
+  file << "TYPE : ATSP\n";
+  file << "DIMENSION : " + to_string(dimension) + "\n";
+  file << "EDGE_WEIGHT_TYPE : EXPLICIT\n";
+  file << "EDGE_WEIGHT_FORMAT : FULL_MATRIX\n";
+  file << "EDGE_WEIGHT_SECTION\n";
+  for (int i = 0; i < dimension; ++i) {
+    for (int j = 0; j < dimension; ++j) {
+      int int_cost = 100 * mat(i, j);
+      file << int_cost << " ";
+    }
+    file << "\n";
+  }
+  file.close();
+
+  // Create par file
+  file.open(ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".par");
+  file << "SPECIAL\n";
+  file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".atsp\n";
+  file << "SALESMEN = " << to_string(drone_num) << "\n";
+  file << "MTSP_OBJECTIVE = MINSUM\n";
+  // file << "MTSP_MIN_SIZE = " << to_string(min(int(ed_->frontiers_.size()) / drone_num, 4)) <<
+  // "\n"; file << "MTSP_MAX_SIZE = "
+  //      << to_string(max(1, int(ed_->frontiers_.size()) / max(1, drone_num - 1))) << "\n";
+  file << "RUNS = 1\n";
+  file << "TRACE_LEVEL = 0\n";
+  file << "TOUR_FILE = " + ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".tour\n";
+  file.close();
+
+  auto par_dir = ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".atsp";
+  t1 = ros::Time::now();
+
+  lkh_mtsp_solver::SolveMTSP srv;
+  srv.request.prob = 2;
+  if (!tsp_client_.call(srv)) {
+    ROS_ERROR("Fail to solve ATSP.");
+    return false;
+  }
+
+  double mtsp_time = (ros::Time::now() - t1).toSec();
+  // std::cout << "AmTSP time: " << mtsp_time << std::endl;
+
+  // Read results
+  t1 = ros::Time::now();
+
+  ifstream fin(ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".tour");
+  string res;
+  vector<int> ids;
+  while (getline(fin, res)) {
+    if (res.compare("TOUR_SECTION") == 0) break;
+  }
+  while (getline(fin, res)) {
+    int id = stoi(res);
+    ids.push_back(id - 1);
+    if (id == -1) break;
+  }
+  fin.close();
+
+  // Parse the m-tour of grid
+  vector<vector<int>> tours;
+  vector<int> tour;
+  for (auto id : ids) {
+    if (id > 0 && id <= drone_num) {
+      tour.clear();
+      tour.push_back(id);
+    } else if (id >= dimension || id <= 0) {
+      tours.push_back(tour);
+    } else {
+      tour.push_back(id);
+    }
+  }
+
+  // for (auto tr : tours) {
+  //   std::cout << "tour: ";
+  //   for (auto id : tr) std::cout << id << ", ";
+  //   std::cout << "" << std::endl;
+  // }
+  others.resize(drone_num - 1);
+  for (int i = 1; i < tours.size(); ++i) {
+    if (tours[i][0] == 1) {
+      indices.insert(indices.end(), tours[i].begin() + 1, tours[i].end());
+    } else {
+      others[tours[i][0] - 2].insert(
+          others[tours[i][0] - 2].end(), tours[i].begin(), tours[i].end());
+    }
+  }
+  for (auto& id : indices) {
+    id -= 1 + drone_num;
+  }
+  for (auto& other : others) {
+    for (auto& id : other) id -= 1 + drone_num;
+  }
+  std::cout << "Grid tour: ";
+  for (auto& id : indices) {
+    id = grid_ids[id];
+    std::cout << id << ", ";
+  }
+  std::cout << "" << std::endl;
+
+  // uniform_grid_->getGridTour(indices, ed_->grid_tour_);
+  grid_ids = indices;
+  hgrid_->getGridTour(grid_ids, positions[0], ed_->grid_tour_, ed_->grid_tour2_);
+
+  ed_->last_grid_ids_ = grid_ids;
+  ed_->reallocated_ = false;
+
+  // hgrid_->checkFirstGrid(grid_ids.front());
+
+  return true;
+}
+
+/**
+ * @brief 根据本机swarm data中分配到的grid
+ * id，首先找到其中还没有被访问的，然后调用求解器规划最佳访问顺序，输出到indices。
+ */
+bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d>& positions,
+    const vector<Eigen::Vector3d>& velocities, vector<int>& indices, vector<vector<int>>& others,
+    const Eigen::Vector3d growth_vector, bool init) {
+  ROS_INFO("Find grid tour---------------");
+
+  auto t1 = ros::Time::now();
+
+  const auto& local_grid_ids = ed_->swarm_state_[ep_->drone_id_ - 1].grid_ids_;
+  vector<int> grid_ids;
+  for (int i = local_grid_ids.size() - 1; i >= 0; --i) {  // 从本地grid_ids中筛选出未访问的grid
+    if (ed_->visited_grid_map.find(local_grid_ids[i]) == ed_->visited_grid_map.end()) {
+      grid_ids.push_back(local_grid_ids[i]);
+    }
+  }
+  // getBoundaryIslandEcrgmts(positions[0], )
 
   // hgrid_->updateBaseCoor();  // Use the latest basecoor transform of swarm
 
@@ -1502,9 +1709,8 @@ bool FastExplorationManager::findCoverageTourOfGrid(const vector<Eigen::Vector3d
   // Create par file
   file.open(ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".par");
   file << "SPECIAL\n";
-  file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) + ".atsp\n";
-  file << "SALESMEN = " << to_string(drone_num) << "\n";
-  file << "MTSP_OBJECTIVE = MINSUM\n";
+  file << "PROBLEM_FILE = " + ep_->mtsp_dir_ + "/amtsp2_" + to_string(ep_->drone_id_) +
+  ".atsp\n"; file << "SALESMEN = " << to_string(drone_num) << "\n"; file << "MTSP_OBJECTIVE = MINSUM\n";
   // file << "MTSP_MIN_SIZE = " << to_string(min(int(ed_->frontiers_.size()) / drone_num, 4)) <<
   // "\n"; file << "MTSP_MAX_SIZE = "
   //      << to_string(max(1, int(ed_->frontiers_.size()) / max(1, drone_num - 1))) << "\n";

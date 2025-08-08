@@ -82,6 +82,8 @@ target_link_libraries(exploration_node
 add_executable(ground_node
   src/ground_node.cpp
   src/fast_exploration_manager.cpp
+  src/island_finder.cpp 
+  src/occmap_processing.cpp
   )
 target_link_libraries(ground_node
   ${catkin_LIBRARIES}

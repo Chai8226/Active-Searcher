@@ -45,11 +45,16 @@ public:
   void getCostMatrix(const vector<Eigen::Vector3d>& positions,
       const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
       const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat);
+
   void getCoverageCostMatrix(const vector<Eigen::Vector3d>& positions,
       const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
       const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat,
-      const Eigen::Vector3d& growth_vector);  // testhigh
+      const vector<double>& encouragement); // testhigh
 
+  void getCoverageCostMatrix(const vector<Eigen::Vector3d>& positions,
+      const vector<Eigen::Vector3d>& velocities, const vector<vector<int>>& first_ids,
+      const vector<vector<int>>& second_ids, const vector<int>& grid_ids, Eigen::MatrixXd& mat,
+      const Eigen::Vector3d& growth_vector);  
   void getGridTour(const vector<int>& ids, const Eigen::Vector3d& pos,
       vector<Eigen::Vector3d>& tour, vector<Eigen::Vector3d>& tour2);
   void getFrontiersInGrid(const vector<int>& grid_ids, vector<int>& ftr_ids);
@@ -68,6 +73,8 @@ public:
       const Eigen::Vector3d& pos, const int& grid_id, const vector<int>& first);
   double getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& grid_id,
       const Vector3d& v1, const vector<int>& first, const Eigen::Vector3d& growth_vector);
+  double getCoverageCostDroneToGrid(const Eigen::Vector3d& pos, const int& grid_id,
+      const Vector3d& v1, const vector<int>& first, const double& encouragement);//testhigh
   double getCostGridToGrid(const int& id1, const int& id2, const vector<vector<int>>& firsts,
       const vector<vector<int>>& seconds, const int& drone_num);
   unique_ptr<Astar> path_finder_;
